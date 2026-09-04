@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Package, ShieldCheck, Zap, Info, Pin, Clock, CheckCircle, XCircle } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import HubSidebar from './HubSidebar';
 
 const API_BASE = 'http://localhost:8000/api';
 
 function ActiveJuggles() {
+  const navigate = useNavigate();
   const [juggles, setJuggles] = useState([]);
   const [user, setUser] = useState(null);
   const [timeLeft, setTimeLeft] = useState(300);
   const [showRelive, setShowRelive] = useState(false);
   const [prevTimeLeft, setPrevTimeLeft] = useState(300);
   const [notification, setNotification] = useState({ message: '', type: '', visible: false });
+  const [reliveTransition, setReliveTransition] = useState('none');
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type, visible: true });
@@ -32,7 +34,7 @@ function ActiveJuggles() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const userRes = await axios.get(`${API_BASE}/users/me/`);
+        const userRes = await axios.get(`${API_BASE}/users/me/`, { withCredentials: true });
         setUser(userRes.data);
         if (userRes.data.seconds_until_next_change !== undefined) {
           const newTime = userRes.data.seconds_until_next_change;
@@ -44,10 +46,13 @@ function ActiveJuggles() {
           setPrevTimeLeft(newTime);
           setTimeLeft(newTime);
         }
-        const jugglesRes = await axios.get(`${API_BASE}/juggle/my_juggles/`);
+        const jugglesRes = await axios.get(`${API_BASE}/juggle/my_juggles/`, { withCredentials: true });
         setJuggles(jugglesRes.data);
       } catch (err) {
         console.error("Error fetching data", err);
+        if (err.response?.status === 401 || err.response?.data?.error === "Not authenticated") {
+          navigate('/account');
+        }
       }
     };
     fetchData();
@@ -55,7 +60,17 @@ function ActiveJuggles() {
     
     // Timer is just for UI visualization of CB refresh, keep it for consistency
     const timerInterval = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? (prev > 300 ? 300 : prev - 1) : 0));
+      setTimeLeft((prev) => {
+        const next = (prev > 0 ? (prev > 300 ? 300 : prev - 1) : 0);
+        if (prev <= 1 && next === 0) {
+           setReliveTransition('exit');
+           setTimeout(() => {
+             setReliveTransition('enter');
+             setTimeout(() => setReliveTransition('none'), 600);
+           }, 500);
+        }
+        return next;
+      });
     }, 1000);
 
     return () => {
@@ -67,10 +82,10 @@ function ActiveJuggles() {
   const handleCancel = async (sessionId) => {
     try {
       if (!window.confirm("Are you sure you want to cancel this deal? Your reserved virtual power will be released.")) return;
-      await axios.post(`${API_BASE}/juggle/${sessionId}/cancel_juggle/`);
+      await axios.post(`${API_BASE}/juggle/${sessionId}/cancel_juggle/`, {}, { withCredentials: true });
       showNotification("Deal cancelled successfully", "success");
       // Re-fetch to update UI immediately
-      const jugglesRes = await axios.get(`${API_BASE}/juggle/my_juggles/`);
+      const jugglesRes = await axios.get(`${API_BASE}/juggle/my_juggles/`, { withCredentials: true });
       setJuggles(jugglesRes.data);
     } catch (err) {
       console.error("Error cancelling juggle", err);
@@ -146,7 +161,7 @@ function ActiveJuggles() {
                 const isDark = bgColor === '#1f2937';
 
                 return (
-                  <div key={juggle.id} className="card card-alive" style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--hub-surface)', border: '1px solid var(--neon-purple)', boxShadow: '0 0 15px rgba(192, 132, 252, 0.1)', opacity: isUnderpowered ? 0.8 : 1 }}>
+                  <div key={juggle.id} className={`card card-alive ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : '')}`} style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--hub-surface)', border: '1px solid var(--neon-purple)', boxShadow: '0 0 15px rgba(192, 132, 252, 0.1)', opacity: isUnderpowered ? 0.8 : 1 }}>
                     <div style={{ 
                       height: '240px', 
                       background: bgColor,

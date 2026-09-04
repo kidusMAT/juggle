@@ -5,7 +5,7 @@ const PyramidVisualizer = ({ pyramidData, currentPhase, totalSafeBalance = 10000
   // Balanced Pool Logic: Individual CB = Total Pool / Survivors
   const pool = totalSafeBalance || 10000;
   
-  const tiers = [
+  const tiers = pyramidData?.tiers || [
     { phase: 7, survivors: 1, value: pool / 1, label: "EXECUTIVE" },
     { phase: 6, survivors: 2, value: pool / 2, label: "DIRECTOR" },
     { phase: 5, survivors: 4, value: pool / 4, label: "MANAGER" },
@@ -15,6 +15,8 @@ const PyramidVisualizer = ({ pyramidData, currentPhase, totalSafeBalance = 10000
     { phase: 1, survivors: 50, value: pool / 50, label: "JUNIOR" },
     { phase: 0, survivors: 100, value: pool / 100, label: "BASE" },
   ];
+
+  const boxSize = pyramidData?.box_size || 100;
 
   const [selectedRank, setSelectedRank] = useState(null);
   const userRank = pyramidData?.user_rank || 0;
@@ -122,7 +124,7 @@ const PyramidVisualizer = ({ pyramidData, currentPhase, totalSafeBalance = 10000
                       key={rank}
                       title={`RANK ${rank} - ${isActive ? 'ACTIVE' : 'IDLE'}`}
                       onClick={() => {
-                        const diff = (userRank - rank + 100) % 100;
+                        const diff = (userRank - rank + boxSize) % boxSize;
                         const totalMinutes = diff * 40;
                         const days = Math.floor(totalMinutes / 1440);
                         const hours = Math.floor((totalMinutes % 1440) / 60);

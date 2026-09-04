@@ -125,9 +125,11 @@ function Navbar({
         {/* Top Row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {/* Logo */}
-          <div style={{ fontSize: '1.5rem', fontWeight: '900', letterSpacing: '-0.05em' }}>
-            GOBeZ
-          </div>
+          <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: '900', letterSpacing: '-0.05em', cursor: 'pointer' }}>
+              GOBeZ
+            </div>
+          </Link>
 
           {/* Search Bar */}
           <div style={{
@@ -150,7 +152,8 @@ function Navbar({
                 background: 'transparent',
                 outline: 'none',
                 marginLeft: '0.5rem',
-                width: '100%',
+                flex: 1,
+                minWidth: 0,
                 fontSize: '0.9rem',
                 fontFamily: 'inherit'
               }}
@@ -159,7 +162,7 @@ function Navbar({
               <div
                 onClick={() => setFiltersOpen(!filtersOpen)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', flexShrink: 0,
                   paddingLeft: '0.5rem', borderLeft: '1px solid #e5e5e5',
                   color: filtersOpen ? '#7c3aed' : 'inherit',
                   transition: 'color 0.2s',
@@ -187,7 +190,7 @@ function Navbar({
 
           {/* Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            <Link to="/" style={{ textDecoration: 'none' }}>
+            <Link to="/juggler" style={{ textDecoration: 'none' }}>
               <button className="btn-black" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}>
                 JUGGLE
               </button>

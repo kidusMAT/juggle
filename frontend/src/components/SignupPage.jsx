@@ -34,7 +34,7 @@ function SignupPage() {
         password: formData.password
       }, { withCredentials: true });
       // Redirect to shop or account after signup
-      window.location.href = '/shop';
+      window.location.href = '/';
     } catch (err) {
       setError(err.response?.data?.error || 'Signup failed. Please try again.');
     } finally {

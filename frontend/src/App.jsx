@@ -16,8 +16,10 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<JugglerDashboard />} />
+        <Route path="/" element={<BuyerMarketplace />} />
+        <Route path="/juggler" element={<JugglerDashboard />} />
         <Route path="/shop" element={<BuyerMarketplace />} />
+        <Route path="/brand/:brandName" element={<BuyerMarketplace />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/active-juggles" element={<ActiveJuggles />} />
 

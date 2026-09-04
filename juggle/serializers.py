@@ -10,7 +10,8 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'actual_balance', 'current_cb', 'seconds_until_next_change', 'pyramid_data', 'is_juggler', 'seller_full_name', 'business_name', 'is_seller_verified', 'seller_status', 'seller_phone', 'business_license', 'tin_number', 'id_proof', 'bank_details_proof', 'address_proof', 'vat_registration', 'import_license']
+        fields = ['id', 'username', 'email', 'actual_balance', 'current_cb', 'seconds_until_next_change', 'pyramid_data', 'is_juggler', 'pyramid_tier', 'deals_completed', 'seller_full_name', 'business_name', 'is_seller_verified', 'seller_status', 'seller_phone', 'business_license', 'tin_number', 'id_proof', 'bank_details_proof', 'address_proof', 'vat_registration', 'import_license']
+        extra_kwargs = {'password': {'write_only': True, 'required': False}}
 
     def get_current_cb(self, obj):
         return obj.get_available_cb()
@@ -25,18 +26,32 @@ class UserSerializer(serializers.ModelSerializer):
     def get_pyramid_data(self, obj):
         info = obj.get_pyramid_info()
         cb = obj.get_calculated_cb() # RAW power for the icon/badge
+        tiers_raw = obj.get_pyramid_tiers()
         
+        # Format tiers for frontend: list of {phase, survivors, value, label}
+        labels = ["BASE", "JUNIOR", "SENIOR", "TEAM LEAD", "SUPERVISOR", "MANAGER", "DIRECTOR", "EXECUTIVE"]
+        formatted_tiers = []
+        for i, (survivors, value) in enumerate(tiers_raw):
+            formatted_tiers.append({
+                "phase": i,
+                "survivors": survivors,
+                "value": value,
+                "label": labels[i]
+            })
+
         return {
             "phase": info["current_phase"],
             "total_phases": info["total_phases"],
             "session_id": info["session_id"],
             "user_rank": info["user_rank"],
+            "box_size": info["box_size"],
             "is_winner": cb > 10.0,
             "pulse_active": cb > 0,
             "reserved_cb": float(obj.reserved_cb),
-            "raw_cb": float(cb),
+            "raw_cb": round(float(cb), 2),
             "total_safe_balance": GlobalSettings.get_current_pool(),
-            "next_winning_phase_seconds": obj.get_next_winning_phase_seconds()
+            "next_winning_phase_seconds": obj.get_next_winning_phase_seconds(),
+            "tiers": formatted_tiers
         }
 
 

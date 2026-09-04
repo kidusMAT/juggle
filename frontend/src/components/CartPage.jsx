@@ -15,7 +15,7 @@ function CartPage() {
 
   const fetchCart = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/cart/`);
+      const res = await axios.get(`${API_BASE}/cart/`, { withCredentials: true });
       setCartItems(res.data);
       setLoading(false);
     } catch (err) {
@@ -30,7 +30,7 @@ function CartPage() {
 
   const removeItem = async (id) => {
     try {
-      await axios.delete(`${API_BASE}/cart/${id}/`);
+      await axios.delete(`${API_BASE}/cart/${id}/`, { withCredentials: true });
       fetchCart();
     } catch (err) {
       console.error("Error removing item", err);
@@ -40,7 +40,7 @@ function CartPage() {
   const handleUpdateQuantity = async (id, newQuantity) => {
     if (newQuantity < 1) return;
     try {
-      await axios.post(`${API_BASE}/cart/${id}/update_quantity/`, { quantity: newQuantity });
+      await axios.post(`${API_BASE}/cart/${id}/update_quantity/`, { quantity: newQuantity }, { withCredentials: true });
       fetchCart();
     } catch (err) {
       console.error("Error updating quantity", err);
@@ -53,7 +53,7 @@ function CartPage() {
   const handleCheckout = async () => {
     setCheckingOut(true);
     try {
-      const res = await axios.post(`${API_BASE}/cart/checkout/`);
+      const res = await axios.post(`${API_BASE}/cart/checkout/`, {}, { withCredentials: true });
       setNotification({ message: res.data.success, visible: true });
       setCartItems([]);
       setTimeout(() => {

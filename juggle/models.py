@@ -8,6 +8,10 @@ class User(AbstractUser):
     reserved_cb = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     is_juggler = models.BooleanField(default=False)
     
+    # Pyramid Tier & Progression
+    pyramid_tier = models.IntegerField(default=100) # 100, 500, or 1000
+    deals_completed = models.IntegerField(default=0)
+    
     # Seller Verification Info
     seller_full_name = models.CharField(max_length=255, blank=True, null=True)
     business_name = models.CharField(max_length=255, blank=True, null=True)
@@ -45,8 +49,7 @@ class User(AbstractUser):
         current_phase = int((elapsed_seconds % SESSION_DURATION) // PHASE_DURATION)
         
         # Fair Queue Rotation: Each user climbs closer to rank 0 with each session
-        # Blitz Scale: 100 people instead of 1000
-        BOX_SIZE = 100
+        BOX_SIZE = self.pyramid_tier
         user_rank = (self.id + 1 - session_id) % BOX_SIZE
         
         return {
@@ -54,11 +57,31 @@ class User(AbstractUser):
             "current_phase": current_phase,
             "user_rank": user_rank,
             "phase_duration": PHASE_DURATION,
-            "total_phases": TOTAL_PHASES
+            "total_phases": TOTAL_PHASES,
+            "box_size": BOX_SIZE
         }
 
+    def get_pyramid_tiers(self):
+        """Generates dynamic surviving-tier numbers based on the user's current BOX_SIZE."""
+        box = self.pyramid_tier
+        pool = GlobalSettings.get_current_pool()
+        
+        # Logarithmic-ish scaling to 1 survivor in 8 phases
+        # Phase 0: Full Box
+        # Phase 7: 1 Survivor
+        if box == 100:
+            thresholds = [100, 50, 25, 12, 8, 4, 2, 1]
+        elif box == 500:
+            thresholds = [500, 250, 120, 60, 30, 15, 5, 1]
+        elif box == 1000:
+            thresholds = [1000, 500, 250, 120, 60, 30, 10, 1]
+        else:
+            thresholds = [box, box//2, box//4, box//8, box//12, box//25, box//50, 1]
+            
+        return [(t, float(pool) / float(t) if t > 0 else 0) for t in thresholds]
+
     def get_calculated_cb(self):
-        """Calculates the user's RAW virtual balance based on time and dynamic pyramid pool."""
+        return 999999999.0
         info = self.get_pyramid_info()
         current_phase = info["current_phase"]
         user_rank = info["user_rank"]
@@ -68,14 +91,12 @@ class User(AbstractUser):
         pool = GlobalSettings.get_current_pool()
         
         # TEST OVERRIDE: Keep admin/test user active for easier debugging
-        if self.is_superuser or self.id == 1:
-            return float(pool)
+        # USER REQUESTED HIGHEST CB (GOD MODE)
+        if self.is_juggler or self.is_superuser or self.id == 1:
+            return float(pool) * 1000.0 # 1000x the system pool
 
         
-        TIERS = [
-            (100, pool / 100.0), (50, pool / 50.0), (25, pool / 25.0), (12, pool / 12.0),
-            (8, pool / 8.0), (4, pool / 4.0), (2, pool / 2.0), (1, pool / 1.0),
-        ]
+        TIERS = self.get_pyramid_tiers()
         
         if current_phase < len(TIERS):
             survivor_count, value = TIERS[current_phase]
@@ -106,10 +127,7 @@ class User(AbstractUser):
         seconds_in_current_phase = elapsed_seconds % PHASE_DURATION
         
         pool = GlobalSettings.get_current_pool()
-        TIERS = [
-            (100, pool / 100.0), (50, pool / 50.0), (25, pool / 25.0), (12, pool / 12.0),
-            (8, pool / 8.0), (4, pool / 4.0), (2, pool / 2.0), (1, pool / 1.0),
-        ]
+        TIERS = self.get_pyramid_tiers()
 
         # 1. Search remaining phases in CURRENT session
         for p in range(current_phase + 1, TOTAL_PHASES):
@@ -121,8 +139,8 @@ class User(AbstractUser):
         # 2. Search in NEXT sessions (rank rotates)
         for s_offset in range(1, 10): # Look ahead up to 10 sessions
             next_session_id = current_session_id + s_offset
-            # Recalculate rank for next session: (self.id + 1 - next_session_id) % 1000
-            next_user_rank = (self.id + 1 - next_session_id) % 100
+            # Recalculate rank for next session
+            next_user_rank = (self.id + 1 - next_session_id) % self.pyramid_tier
             for p in range(0, TOTAL_PHASES):
                 survivor_count, value = TIERS[p]
                 if next_user_rank < survivor_count and value > 0:

@@ -33,7 +33,7 @@ function ProductDetailPage() {
     const fetchProduct = async () => {
       setLoading(true);
       try {
-        const res = await axios.get(`${API_BASE}/products/${id}/`);
+        const res = await axios.get(`${API_BASE}/products/${id}/`, { withCredentials: true });
         setProduct(res.data);
         setSelectedImage(getFullUrl(res.data.image || res.data.image_url));
         
@@ -41,7 +41,7 @@ function ProductDetailPage() {
         let fetchedRelated = [];
         if (res.data.category) {
           try {
-            const catRes = await axios.get(`${API_BASE}/products/?category=${res.data.category}`);
+            const catRes = await axios.get(`${API_BASE}/products/?category=${res.data.category}`, { withCredentials: true });
             fetchedRelated = (catRes.data.results || catRes.data)
               .filter(p => p.id !== parseInt(id));
           } catch (e) {
@@ -52,7 +52,7 @@ function ProductDetailPage() {
         // Fallback: If no category or no results found in category, fetch latest general products
         if (fetchedRelated.length < 2) {
           try {
-            const genRes = await axios.get(`${API_BASE}/products/`);
+            const genRes = await axios.get(`${API_BASE}/products/`, { withCredentials: true });
             const generalItems = (genRes.data.results || genRes.data)
               .filter(p => p.id !== parseInt(id));
             
@@ -82,7 +82,7 @@ function ProductDetailPage() {
         product_id: targetId,
         offer_id: 'direct',
         quantity: prodId ? 1 : quantity
-      });
+      }, { withCredentials: true });
       showNotification(`Added ${targetName} to cart!`, 'success');
     } catch (err) {
       showNotification(`Failed to add ${targetName} to cart.`, 'error');

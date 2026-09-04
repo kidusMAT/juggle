@@ -134,7 +134,12 @@ function SellerDashboard() {
         } else if (res.data.seller_status === 'VERIFIED') {
           setStep(prev => prev === 0 ? 1 : prev);
         }
-      } catch (err) { console.error("Error fetching user", err); }
+      } catch (err) { 
+        console.error("Error fetching user", err);
+        if (err.response?.status === 401 || err.response?.data?.error === "Not authenticated") {
+          navigate('/account');
+        }
+      }
     };
     fetchUser();
   }, []);

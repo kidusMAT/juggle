@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { ShoppingBag, ShieldCheck, Zap, Info, Pin, Layers, Activity, Crown, Search, CheckCircle, XCircle } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import HubSidebar from './HubSidebar';
 
 const API_BASE = 'http://localhost:8000/api';
 
 function JugglerDashboard() {
+  const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [products, setProducts] = useState([]);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
@@ -25,8 +26,11 @@ function JugglerDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [priceFilter, setPriceFilter] = useState("all");
   const [brandFilter, setBrandFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [categories, setCategories] = useState([]);
   const [affordableOnly, setAffordableOnly] = useState(false);
   const [notification, setNotification] = useState({ message: '', type: '', visible: false });
+  const [reliveTransition, setReliveTransition] = useState('none');
 
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type, visible: true });
@@ -45,7 +49,7 @@ function JugglerDashboard() {
 
   const fetchUserStatus = React.useCallback(async () => {
     try {
-      const userRes = await axios.get(`${API_BASE}/users/me/`);
+      const userRes = await axios.get(`${API_BASE}/users/me/`, { withCredentials: true });
       setUser(userRes.data);
       if (userRes.data.seconds_until_next_change !== undefined) {
         const newTime = userRes.data.seconds_until_next_change;
@@ -64,8 +68,11 @@ function JugglerDashboard() {
       }
     } catch (err) {
       console.error("Error fetching user status", err);
+      if (err.response?.status === 401 || err.response?.data?.error === "Not authenticated") {
+        navigate('/account');
+      }
     }
-  }, []); // Stable status fetcher
+  }, [navigate]); // Stable status fetcher
 
   const fetchProductsData = React.useCallback(async (url = `${API_BASE}/products/prototype_feed/`, isLoadMore = false) => {
     if (isLoadMore) {
@@ -99,6 +106,18 @@ function JugglerDashboard() {
     }
   }, [loadingMore, fetchedUrls]);
 
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await axios.get(`${API_BASE}/categories/`, { withCredentials: true });
+        setCategories(res.data);
+      } catch (err) {
+        console.error("Error fetching categories", err);
+      }
+    };
+    fetchCategories();
+  }, []);
+
   // Initial Data Fetch
   useEffect(() => {
     fetchUserStatus();
@@ -109,7 +128,17 @@ function JugglerDashboard() {
   useEffect(() => {
     const statusInterval = setInterval(fetchUserStatus, 1000);
     const timerInterval = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+      setTimeLeft((prev) => {
+        const next = (prev > 0 ? prev - 1 : 0);
+        if (prev <= 1 && next === 0) {
+           setReliveTransition('exit');
+           setTimeout(() => {
+             setReliveTransition('enter');
+             setTimeout(() => setReliveTransition('none'), 600);
+           }, 500);
+        }
+        return next;
+      });
       setNextPowerUp((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
@@ -198,9 +227,10 @@ function JugglerDashboard() {
       (priceFilter === 'high' && p.base_price > 5000);
 
     const matchesBrand = brandFilter === 'all' || p.brand === brandFilter;
+    const matchesCategory = categoryFilter === 'all' || String(p.category) === String(categoryFilter);
     const matchesAffordability = !affordableOnly || user.current_cb >= p.base_price;
 
-    return matchesSearch && matchesPrice && matchesBrand && matchesAffordability;
+    return matchesSearch && matchesPrice && matchesBrand && matchesCategory && matchesAffordability;
   });
 
   return (
@@ -244,16 +274,48 @@ function JugglerDashboard() {
                   BASE {pyr.user_rank}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: pyr.pulse_active ? 'var(--neon-blue)' : 'var(--hub-text-muted)', textTransform: 'uppercase' }}>
-                  <Activity size={14} />
-                  {pyr.pulse_active ? 'ACTIVE PULSE' : (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      RESTING PULSE
-                      <span style={{ color: 'var(--neon-gold)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Zap size={12} /> JUGGLE IN: {formatTime(nextPowerUp)}
-                      </span>
-                    </span>
-                  )}
+                  <Zap size={14} />
+                  {pyr.pulse_active ? 'ACTIVE PULSE' : 'IDLE POWER'}
                 </div>
+              </div>
+            </div>
+
+            <div className="hub-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', borderLeft: '4px solid var(--neon-blue)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <p className="text-muted" style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pyramid Tier</p>
+                  <h2 style={{ color: 'var(--neon-blue)', fontSize: '2.5rem', margin: '0.5rem 0' }}>{user.pyramid_tier} <span style={{ fontSize: '1rem', opacity: 0.5 }}>TIER</span></h2>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', margin: 0 }}>
+                    DEALS: <strong>{user.deals_completed}</strong>
+                  </p>
+                  <div style={{ marginTop: '8px' }}>
+                    <ShieldCheck size={20} color={user.pyramid_tier >= 500 ? 'var(--neon-blue)' : 'rgba(255,255,255,0.1)'} />
+                  </div>
+                </div>
+              </div>
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem' }}>
+                {user.pyramid_tier < 1000 ? (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: '4px' }}>
+                      <span className="text-muted">NEXT UNLOCK: {user.pyramid_tier === 100 ? '500 Tier' : '1000 Tier'}</span>
+                      <span style={{ color: 'var(--neon-blue)' }}>{user.deals_completed}/{user.pyramid_tier === 100 ? 5 : 10} DEALS</span>
+                    </div>
+                    <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{ 
+                        width: `${Math.min(100, (user.deals_completed / (user.pyramid_tier === 100 ? 5 : 10)) * 100)}%`, 
+                        height: '100%', 
+                        background: 'var(--neon-blue)',
+                        boxShadow: '0 0 10px var(--neon-blue)'
+                      }} />
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ color: 'var(--neon-gold)', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: '0.1em' }}>
+                    MAX TIER UNLOCKED // ELITE JUGGLER
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -357,6 +419,37 @@ function JugglerDashboard() {
               ))}
             </select>
 
+            {/* Divider */}
+            <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.08)' }} />
+
+            {/* Category Dropdown */}
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '2rem',
+                padding: '5px 12px',
+                color: categoryFilter !== 'all' ? 'var(--neon-green)' : 'rgba(255,255,255,0.5)',
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                outline: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              <option value="all" style={{ background: '#0a0a0a', color: 'white' }}>All Categories</option>
+              {categories.filter(c => !c.parent).map(cat => (
+                <option key={cat.id} value={cat.id} style={{ background: '#0a0a0a', color: 'white' }}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+
+            {/* Divider */}
+            <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.08)' }} />
+
             {/* Affordable Toggle */}
             <button
               onClick={() => setAffordableOnly(!affordableOnly)}
@@ -403,7 +496,7 @@ function JugglerDashboard() {
               const isFlipped = flippedCardId === product.id;
 
               return (
-                <div key={product.id} className="card-flip-container" style={{ perspective: '1000px', height: '480px' }}>
+                <div key={product.id} className={`card-flip-container ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : '')}`} style={{ perspective: '1000px', height: '480px' }}>
                   <div className={`card-inner ${isFlipped ? 'flipped' : ''}`} style={{ transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)', transition: 'transform 0.6s', transformStyle: 'preserve-3d', position: 'relative', width: '100%', height: '100%' }}>
 
                     {/* FRONT OF CARD */}

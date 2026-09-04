@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -74,6 +75,11 @@ ACCOUNT_EMAIL_VERIFICATION = 'none'
 
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
+        'APP': {
+            'client_id': os.environ.get('GOOGLE_OAUTH_CLIENT_ID', 'placeholder-client-id'),
+            'secret': os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', 'placeholder-client-secret'),
+            'key': ''
+        },
         'SCOPE': [
             'profile',
             'email',
@@ -84,6 +90,11 @@ SOCIALACCOUNT_PROVIDERS = {
         'OAUTH_PKCE_ENABLED': True,
     }
 }
+
+SOCIALACCOUNT_LOGIN_ON_GET = True
+SOCIALACCOUNT_ADAPTER = 'core.adapters.AutoConnectSocialAccountAdapter'
+ACCOUNT_ADAPTER = 'core.adapters.MyAccountAdapter'
+LOGIN_REDIRECT_URL = 'http://localhost:5173/shop'
 
 ROOT_URLCONF = 'core.urls'
 

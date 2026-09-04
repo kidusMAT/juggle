@@ -455,6 +455,55 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
+    def change_password(self, request):
+        user = request.user
+        if user.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+        
+        if not old_password or not new_password:
+            return Response({"error": "Both old and new password are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(old_password):
+            return Response({"error": "Incorrect old password"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user.set_password(new_password)
+        user.save()
+        from django.contrib.auth import update_session_auth_hash
+        update_session_auth_hash(request, user) # Maintain session
+        return Response({"success": "Password changed successfully"})
+
+    @action(detail=False, methods=['post'])
+    def update_profile(self, request):
+        user = request.user
+        if user.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        username = request.data.get('username')
+        email = request.data.get('email')
+        
+        if username and username != user.username:
+            if User.objects.filter(username=username).exists():
+                return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
+            user.username = username
+            
+        if email and email != user.email:
+            if User.objects.filter(email=email).exists():
+                return Response({"error": "Email already exists"}, status=status.HTTP_400_BAD_REQUEST)
+            user.email = email
+
+        # Seller info
+        user.seller_full_name = request.data.get('seller_full_name', user.seller_full_name)
+        user.business_name = request.data.get('business_name', user.business_name)
+        user.seller_phone = request.data.get('seller_phone', user.seller_phone)
+        user.tin_number = request.data.get('tin_number', user.tin_number)
+        
+        user.save()
+        return Response(UserSerializer(user).data)
+
+    @action(detail=False, methods=['post'])
     def verify_seller(self, request):
         user = request.user
         if user.is_anonymous:
@@ -658,10 +707,19 @@ class CartViewSet(viewsets.ModelViewSet):
             product = item.product
             product.status = 'SOLD'
             product.save()
-            # If there was a juggle session, mark it as completed/inactive
+            # If there was a juggle session, mark it as completed/inactive and reward the juggler
             if item.selected_offer:
+                juggler = item.selected_offer.user
                 item.selected_offer.is_active = False
                 item.selected_offer.save()
+                
+                # Increment deals_completed and check for tier upgrade
+                juggler.deals_completed += 1
+                if juggler.deals_completed >= 10:
+                    juggler.pyramid_tier = 1000
+                elif juggler.deals_completed >= 5:
+                    juggler.pyramid_tier = 500
+                juggler.save()
         
         items.delete()
         return Response({'success': 'Checkout successful! Products are on their way.'})

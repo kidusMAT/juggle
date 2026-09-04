@@ -22,6 +22,11 @@ def seed_categories():
             ('Furniture', 'armchair'),
             ('Kitchen', 'utensils'),
             ('Decor', 'leaf')
+        ]),
+        ('Food', 'utensils', [
+            ('Beverages', 'coffee'),
+            ('Snacks', 'pie-chart'),
+            ('Organic', 'leaf')
         ])
     ]
 

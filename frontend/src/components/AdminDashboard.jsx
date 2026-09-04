@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { Shield, Check, X, FileText, Image as ImageIcon, Phone, User, Briefcase, ExternalLink, Activity } from 'lucide-react';
 import Navbar from './Navbar';
@@ -6,6 +7,7 @@ import Navbar from './Navbar';
 const API_BASE = 'http://localhost:8000/api';
 
 function AdminDashboard() {
+  const navigate = useNavigate();
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState({ message: '', type: '', visible: false });
@@ -21,6 +23,9 @@ function AdminDashboard() {
       setApplications(res.data);
     } catch (err) {
       showNotification("Failed to fetch applications. Admin access required.", "error");
+      if (err.response?.status === 401 || err.response?.data?.error === "Not authenticated") {
+        navigate('/account');
+      }
     } finally {
       setLoading(false);
     }
