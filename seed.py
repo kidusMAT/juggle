@@ -7,15 +7,18 @@ django.setup()
 from juggle.models import Product, User, GlobalSettings
 from django.utils import timezone
 
+from django.contrib.auth.hashers import make_password
+
 def seed():
     # Create 1000 test users for full pyramid rotation
-    for i in range(1, 1001):
-        username = f'juggler_{i}'
-        user, created = User.objects.get_or_create(username=username)
-        if created:
-            user.set_password('password123')
-            user.actual_balance = 10.00
-            user.save()
+    hashed_pwd = make_password('password123')
+    existing_usernames = set(User.objects.values_list('username', flat=True))
+    users_to_create = [
+        User(username=f'juggler_{i}', password=hashed_pwd, actual_balance=10.00)
+        for i in range(1, 1001) if f'juggler_{i}' not in existing_usernames
+    ]
+    if users_to_create:
+        User.objects.bulk_create(users_to_create)
     print(f"1000 users seeded")
 
     # Create products
