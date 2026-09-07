@@ -102,6 +102,9 @@ function BuyerMarketplace() {
   const [processingPayment, setProcessingPayment] = useState(false);
   const [reliveTransition, setReliveTransition] = useState('none'); // 'none', 'exit', 'enter'
 
+  const { brandName } = useParams();
+  const [selectedBrand, setSelectedBrand] = useState(brandName || 'All');
+
   const scrollRef = React.useRef(null);
 
   const handleColorToggle = (color) => {
@@ -288,9 +291,6 @@ function BuyerMarketplace() {
       }
     }, 1500);
   };
-
-  const { brandName } = useParams();
-  const [selectedBrand, setSelectedBrand] = useState(brandName || 'All');
 
   useEffect(() => {
     if (brandName) setSelectedBrand(brandName);
