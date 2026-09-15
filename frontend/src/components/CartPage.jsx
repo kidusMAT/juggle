@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api, { API_BASE } from '../api';
 import { ShoppingCart, Trash2, ArrowRight, ShoppingBag, CheckCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar';
-
-const API_BASE = 'http://localhost:8000/api';
 
 function CartPage() {
   const [cartItems, setCartItems] = useState([]);
@@ -15,7 +13,7 @@ function CartPage() {
 
   const fetchCart = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/cart/`, { withCredentials: true });
+      const res = await api.get('/cart/');
       setCartItems(res.data);
       setLoading(false);
     } catch (err) {
@@ -30,7 +28,7 @@ function CartPage() {
 
   const removeItem = async (id) => {
     try {
-      await axios.delete(`${API_BASE}/cart/${id}/`, { withCredentials: true });
+      await api.delete(`/cart/${id}/`);
       fetchCart();
     } catch (err) {
       console.error("Error removing item", err);
@@ -40,7 +38,7 @@ function CartPage() {
   const handleUpdateQuantity = async (id, newQuantity) => {
     if (newQuantity < 1) return;
     try {
-      await axios.post(`${API_BASE}/cart/${id}/update_quantity/`, { quantity: newQuantity }, { withCredentials: true });
+      await api.post(`/cart/${id}/update_quantity/`, { quantity: newQuantity });
       fetchCart();
     } catch (err) {
       console.error("Error updating quantity", err);
@@ -53,7 +51,7 @@ function CartPage() {
   const handleCheckout = async () => {
     setCheckingOut(true);
     try {
-      const res = await axios.post(`${API_BASE}/cart/checkout/`, {}, { withCredentials: true });
+      const res = await api.post('/cart/checkout/', {});
       setNotification({ message: res.data.success, visible: true });
       setCartItems([]);
       setTimeout(() => {
@@ -62,6 +60,9 @@ function CartPage() {
       }, 3000);
     } catch (err) {
       console.error("Checkout failed", err);
+      const errorMsg = err.response?.data?.error || "Checkout failed. Please try again.";
+      setNotification({ message: errorMsg, visible: true });
+      setTimeout(() => setNotification({ message: '', visible: false }), 4000);
     } finally {
       setCheckingOut(false);
     }
@@ -110,7 +111,7 @@ function CartPage() {
                   <div key={item.id} className="card" style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', padding: '1.5rem' }}>
                     <div style={{ 
                       width: '100px', height: '100px', 
-                      background: item.product_details.image ? `url(http://localhost:8000${item.product_details.image}) center/cover` : '#eee', 
+                      background: item.product_details.image ? `url(${API_BASE.replace('/api', '')}${item.product_details.image}) center/cover` : '#eee', 
                       borderRadius: '1rem' 
                     }} />
                     

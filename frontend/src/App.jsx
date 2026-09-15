@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import JugglerDashboard from './components/JugglerDashboard';
 import BuyerMarketplace from './components/BuyerMarketplace';
 import ActiveJuggles from './components/ActiveJuggles';
+import BrandCollectionPage from './components/BrandCollectionPage';
 
 import SellerDashboard from './components/SellerDashboard';
 import AccountPage from './components/AccountPage';
@@ -19,7 +20,7 @@ function App() {
         <Route path="/" element={<BuyerMarketplace />} />
         <Route path="/juggler" element={<JugglerDashboard />} />
         <Route path="/shop" element={<BuyerMarketplace />} />
-        <Route path="/brand/:brandName" element={<BuyerMarketplace />} />
+        <Route path="/brand/:brandName" element={<BrandCollectionPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/active-juggles" element={<ActiveJuggles />} />
 

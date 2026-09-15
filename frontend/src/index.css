@@ -37,6 +37,7 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   background-attachment: fixed;
+  overflow-x: hidden;
 }
 
 .container {
@@ -71,6 +72,8 @@ h3 {
   padding: 1.5rem;
   box-shadow: var(--shadow-md);
   transition: transform 0.2s ease;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .btn-black {
@@ -224,9 +227,18 @@ h3 {
 /* Grid */
 .grid-products {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 2rem;
-  padding: 2rem 0;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+  padding: 1.5rem 0;
+  max-width: 100%;
+  width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.grid-products > * {
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Badges */
@@ -262,6 +274,7 @@ h3 {
   margin: 0;
   padding: 2rem;
   font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
 }
 
 /* Force body background specifically when serving index.html for Hub, 
@@ -270,6 +283,7 @@ h3 {
 .juggler-hub .hub-container {
   max-width: 1200px;
   margin: 0 auto;
+  overflow: hidden;
 }
 
 .juggler-hub h1, .juggler-hub h2, .juggler-hub h3 {
@@ -398,6 +412,8 @@ h3 {
   perspective: 1000px;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .card-inner {
@@ -807,5 +823,9 @@ h3 {
 
 .renew-enter {
   animation: renew-enter 0.5s cubic-bezier(0, 0, 0.2, 1) forwards !important;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 

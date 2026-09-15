@@ -2,12 +2,13 @@ import os
 import django
 from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
 import random
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
 
-from juggle.models import User, Category, Product, JuggleSession
+from juggle.models import User, Category, Product, JuggleSession, Pyramid, BALANCE_CAP
 
 def seed():
     print("Preparing to dump a massive amount of high-end GOAT-style products...")
@@ -18,10 +19,28 @@ def seed():
     c_streetwear, _ = Category.objects.get_or_create(name='Streetwear')
     c_art, _ = Category.objects.get_or_create(name='Collectibles & Art')
 
-    test_seller, _ = User.objects.get_or_create(username='volume_seller', defaults={'email':'mass_seller@goat.com', 'is_juggler': True})
+    test_seller, _ = User.objects.get_or_create(username='volume_seller', defaults={'email':'mass_seller@goat.com', 'is_juggler': True, 'actual_balance': Decimal('100.00')})
+    if test_seller.actual_balance < Decimal('10.00'):
+        test_seller.actual_balance = Decimal('100.00')
+        test_seller.save(update_fields=['actual_balance'])
+    if test_seller.actual_balance > BALANCE_CAP:
+        overflow = test_seller.actual_balance - BALANCE_CAP
+        test_seller.actual_balance = BALANCE_CAP
+        test_seller.pending_balance += overflow
+        test_seller.save(update_fields=['actual_balance', 'pending_balance'])
+        Pyramid.objects.create(owner=test_seller, overflow_amount=overflow)
     juggler_pool = []
     for i in range(1, 6):
-        user, _ = User.objects.get_or_create(username=f'pro_juggler_{i}', defaults={'email': f'pj{i}@jug.com', 'is_juggler': True})
+        user, _ = User.objects.get_or_create(username=f'pro_juggler_{i}', defaults={'email': f'pj{i}@jug.com', 'is_juggler': True, 'actual_balance': Decimal('100.00')})
+        if user.actual_balance < Decimal('10.00'):
+            user.actual_balance = Decimal('100.00')
+            user.save(update_fields=['actual_balance'])
+        if user.actual_balance > BALANCE_CAP:
+            overflow = user.actual_balance - BALANCE_CAP
+            user.actual_balance = BALANCE_CAP
+            user.pending_balance += overflow
+            user.save(update_fields=['actual_balance', 'pending_balance'])
+            Pyramid.objects.create(owner=user, overflow_amount=overflow)
         juggler_pool.append(user)
 
     # A massive array of products covering multiple categories

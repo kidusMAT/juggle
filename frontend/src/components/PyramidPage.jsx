@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api, { API_BASE } from '../api';
 import HubSidebar from './HubSidebar';
 import PyramidVisualizer from './PyramidVisualizer';
-
-const API_BASE = 'http://localhost:8000/api';
 
 function PyramidPage() {
   const navigate = useNavigate();
@@ -13,7 +11,7 @@ function PyramidPage() {
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/users/me/`, { withCredentials: true });
+        const res = await api.get('/users/me/');
         setUser(res.data);
       } catch (err) {
         console.error("Error fetching user data", err);

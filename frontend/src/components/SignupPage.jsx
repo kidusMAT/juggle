@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import api, { API_BASE } from '../api';
 import { UserPlus, ArrowRight, Mail, Lock, User as UserIcon } from 'lucide-react';
 import Navbar from './Navbar';
-
-const API_BASE = 'http://localhost:8000';
 
 function SignupPage() {
   const navigate = useNavigate();
@@ -26,13 +24,18 @@ function SignupPage() {
       return;
     }
 
+    if (formData.password.length < 8) {
+      setError("Password must be at least 8 characters long");
+      return;
+    }
+
     setLoading(true);
     try {
-      await axios.post(`${API_BASE}/api/users/signup_user/`, {
+      await api.post('/users/signup_user/', {
         username: formData.username,
         email: formData.email,
         password: formData.password
-      }, { withCredentials: true });
+      });
       // Redirect to shop or account after signup
       window.location.href = '/';
     } catch (err) {

@@ -1,21 +1,26 @@
 from rest_framework import viewsets, status, pagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import Product, JuggleSession, GlobalSettings, User, CartItem, Category, ProductVariant
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
+from .models import Product, JuggleSession, GlobalSettings, User, CartItem, Category, ProductVariant, Pyramid, Notification, Transaction, Order, Review
 from .serializers import (
-    ProductSerializer, JuggleSessionSerializer, UserSerializer, 
-    BuyerMarketSerializer, CartItemSerializer, CategorySerializer
+    ProductSerializer, JuggleSessionSerializer, UserSerializer,
+    BuyerMarketSerializer, CartItemSerializer, CategorySerializer, NotificationSerializer,
+    TransactionSerializer, OrderSerializer, ReviewSerializer
 )
 from django.utils import timezone
-from django.db.models import Q
+from django.db.models import Q, F, Avg
+from django.db import transaction
 from django.contrib.auth import authenticate, login, logout
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 import datetime
+import decimal
 from decimal import Decimal
+
 
 class UnsafeSessionAuthentication(SessionAuthentication):
     def enforce_csrf(self, request):
-        return  # To not perform the CSRF check.
+        return
 
 
 class StandardResultsSetPagination(pagination.PageNumberPagination):
@@ -23,53 +28,57 @@ class StandardResultsSetPagination(pagination.PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 100
 
+
 class LargeResultsSetPagination(pagination.PageNumberPagination):
     page_size = 24
     page_size_query_param = 'page_size'
     max_page_size = 100
 
+
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().order_by('name')
     serializer_class = CategorySerializer
+    permission_classes = [AllowAny]
+
+
+_last_cleanup_time = None
+
 
 def cleanup_expired_juggles():
-    """Inactivates sessions ONLY if power is lost, or if manually cancelled.
-    Ignores expires_at for persistence, allowing deals to stay live through multiple power cycles
-    AS LONG AS the user's pyramid balance stays high enough.
-    """
-    # Order by created_at (ascending) to keep OLDEST deals first when power drops
+    global _last_cleanup_time
+    now = timezone.now()
+    if _last_cleanup_time and (now - _last_cleanup_time).total_seconds() < 60:
+        return
+    _last_cleanup_time = now
+
     active_sessions = JuggleSession.objects.filter(is_active=True).select_related('user', 'product').order_by('start_time')
-    
-    # We group by user to check their specific power envelope
+
     processed_users = {}
-    
+
     for session in active_sessions:
         user = session.user
         if user.id not in processed_users:
             processed_users[user.id] = float(user.get_calculated_cb())
-        
+
         cost = float(session.product.base_price)
         if processed_users[user.id] >= cost:
-            # Power exists, keep session active
             processed_users[user.id] -= cost
         else:
-            # Power lost! Drop the deal
             session.is_active = False
-            session.save()
-            
-            # Release reservation
-            user.reserved_cb -= session.product.base_price
-            if user.reserved_cb < 0: user.reserved_cb = 0
-            user.save()
-            
+            session.save(update_fields=['is_active'])
+
+            user.reserved_cb = max(Decimal('0'), user.reserved_cb - session.product.base_price)
+            user.save(update_fields=['reserved_cb'])
+
             product = session.product
-            # Only revert to AVAILABLE if NO active sessions remain for this product
             if not product.active_sessions.filter(is_active=True).exists() and product.status == 'JUGGLED':
                 product.status = 'AVAILABLE'
-                product.save()
+                product.save(update_fields=['status'])
+
 
 class ProductViewSet(viewsets.ModelViewSet):
     authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
 
@@ -83,29 +92,29 @@ class ProductViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         user = self.request.user
         if user.is_anonymous:
-            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Authentication required.")
+
+        allow_juggling = self.request.data.get('allow_juggling', True)
         
-        if user.seller_status != 'VERIFIED':
-            return Response({"error": "Seller accounts must be approved by admin before listing prototypes."}, status=status.HTTP_403_FORBIDDEN)
-            
+        if allow_juggling and user.seller_status != 'VERIFIED':
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Seller accounts must be approved by admin before listing products for juggling.")
+
         serializer.save(seller=user, status='AVAILABLE')
 
     @action(detail=False, methods=['get'])
     def prototype_feed(self, request):
         cleanup_expired_juggles()
+
         if request.user.is_anonymous:
-            user = User.objects.first()
+            current_cb = 0.0
         else:
-            user = request.user
-            
-        user_data = UserSerializer(user).data
-        current_cb = float(user_data['current_cb'])
-        
-        # Show all PRODUCTS with 'AVAILABLE' or 'JUGGLED' status that ALLOW juggling
-        products = Product.objects.filter(status__in=['AVAILABLE', 'JUGGLED'], allow_juggling=True).exclude(status='SOLD').order_by('-id')
-        
-        # Simple manual pagination after Python filtering
-        # Ideally this should be optimized to database-level filtering
+            user_data = UserSerializer(request.user).data
+            current_cb = float(user_data['current_cb'])
+
+        products = Product.objects.filter(status__in=['AVAILABLE', 'JUGGLED'], allow_juggling=True).order_by('-id')
+
         paginator = StandardResultsSetPagination()
         page = paginator.paginate_queryset(products, request)
         if page is not None:
@@ -117,26 +126,25 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='buyer_market')
     def buyer_market(self, request):
-        """Site A endpoint: Shows all prototypes currently being juggled by anyone OR direct sales."""
         cleanup_expired_juggles()
-        
-        # Only show products that have active jugglers OR are direct sales
-        products = Product.objects.filter(Q(status='JUGGLED') | Q(status='AVAILABLE', allow_juggling=False)).prefetch_related('active_sessions__user').order_by('-id')
-        
+
+        products = Product.objects.filter(
+            Q(status='JUGGLED') | Q(status='AVAILABLE', allow_juggling=False)
+        ).prefetch_related('active_sessions__user').order_by('-id')
+
         deals = []
         for product in products:
             if product.allow_juggling:
-                # Group active sessions by (user, markup_price)
-                sessions = product.active_sessions.filter(is_active=True, expires_at__gt=timezone.now()).select_related('user')
-                
-                # Dictionary to group by (user_id, markup_price)
+                sessions = product.active_sessions.filter(
+                    is_active=True, expires_at__gt=timezone.now()
+                ).select_related('user')
+
                 groups = {}
                 for s in sessions:
-                    # Only show jugglers who have sufficient POWER right now
                     if s.user.get_calculated_cb() < float(product.base_price):
                         continue
-                        
-                    key = (s.user.id, s.markup_price)
+
+                    key = (s.user.id, float(s.markup_price))
                     if key not in groups:
                         groups[key] = {
                             "id": str(s.id),
@@ -152,10 +160,9 @@ class ProductViewSet(viewsets.ModelViewSet):
                     groups[key]["amount"] = int(groups[key]["amount"]) + 1
                     if s.expires_at < groups[key]["expires_at"]:
                         groups[key]["expires_at"] = s.expires_at
-                
+
                 deals.extend(groups.values())
             else:
-                # Direct sale deal
                 deals.append({
                     "id": f"direct_{product.id}",
                     "deal_key": f"direct_{product.id}",
@@ -168,7 +175,6 @@ class ProductViewSet(viewsets.ModelViewSet):
                     "is_direct": True
                 })
 
-        # Manual pagination for the list of deals
         from .serializers import DealSerializer
         paginator = LargeResultsSetPagination()
         page = paginator.paginate_queryset(deals, request)
@@ -181,41 +187,56 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def buy_direct(self, request, pk=None):
-        """Site A direct purchase bypassing jugglers."""
         product = self.get_object()
-        quantity = int(request.data.get('quantity', 1))
-        
+
+        try:
+            quantity = int(request.data.get('quantity', 1))
+        except (ValueError, TypeError):
+            return Response({"error": "Quantity must be a valid integer"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if quantity < 1:
+            return Response({"error": "Quantity must be at least 1"}, status=status.HTTP_400_BAD_REQUEST)
+
         if product.status == 'SOLD' or product.stock < quantity:
             return Response({"error": "Product is sold out or insufficient stock"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
+        buyer = request.user
+        if buyer.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
         total_price = product.base_price * quantity
-        
-        # Transfer profit to seller (Atomic)
-        from django.db.models import F
-        from decimal import Decimal
-        settings = GlobalSettings.get_settings()
-        fee_rate = settings.site_fee_percentage / Decimal('100.0')
+
+        if buyer.actual_balance < total_price:
+            return Response({"error": f"Insufficient balance. Required: ETB {total_price}, Available: ETB {buyer.actual_balance}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        settings_obj = GlobalSettings.get_settings()
+        fee_rate = settings_obj.site_fee_percentage / Decimal('100.0')
         site_fee = total_price * fee_rate
         seller_revenue = total_price - site_fee
-        
-        seller = product.seller
-        if seller:
-            seller_id = seller.id
-            User.objects.filter(id=seller_id).update(actual_balance=F('actual_balance') + seller_revenue)
-            
-        # Track Site Profit
-        GlobalSettings.objects.filter(id=1).update(
-            total_site_profit=F('total_site_profit') + site_fee
-        )
-            
-        product.stock -= quantity
-        if product.stock <= 0:
-            product.stock = 0
-            product.status = 'SOLD'
-            # Inactivate ALL competing juggle sessions since it's sold
-            product.active_sessions.filter(is_active=True).update(is_active=False)
-        product.save()
-        
+
+        with transaction.atomic():
+            User.objects.filter(id=buyer.id).update(
+                actual_balance=F('actual_balance') - total_price
+            )
+
+            seller = product.seller
+            if seller:
+                seller.credit_balance(seller_revenue)
+
+            GlobalSettings.objects.filter(id=1).update(
+                total_site_profit=F('total_site_profit') + site_fee
+            )
+
+            Product.objects.filter(id=product.id).update(
+                stock=F('stock') - quantity
+            )
+
+            product.refresh_from_db()
+            if product.stock <= 0:
+                product.status = 'SOLD'
+                product.save(update_fields=['status'])
+                product.active_sessions.filter(is_active=True).update(is_active=False)
+
         return Response({
             "success": f"Purchased {quantity} {product.name}(s) directly from {seller.username if seller else 'System'} for ETB {total_price}.",
             "product_status": product.status,
@@ -224,35 +245,37 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def my_products(self, request):
-        """Seller endpoint to list all products they have posted."""
         user = request.user
         if user.is_anonymous:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-            
-        # Get all products belonging to logged in user
+
         products = Product.objects.filter(seller=user).order_by('-id')
         serializer = ProductSerializer(products, many=True)
         return Response(serializer.data)
 
+
 class JuggleViewSet(viewsets.ModelViewSet):
     authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = JuggleSession.objects.all()
     serializer_class = JuggleSessionSerializer
 
     @action(detail=True, methods=['post'])
     def buy_item(self, request, pk=None):
-        """Site A purchase: A buyer selects a specific juggler's session to buy from.
-        Supports quantity (purchasing multiple slots from the same deal).
-        """
-        # Note: pk here is the ID of ONE session in the deal. 
-        # We use it to identify the (product, user, price) group.
         base_session = self.get_object()
-        quantity = int(request.data.get('quantity', 1))
-        
+
+        try:
+            quantity = int(request.data.get('quantity', 1))
+        except (ValueError, TypeError):
+            return Response({"error": "Quantity must be a valid integer"}, status=status.HTTP_400_BAD_REQUEST)
+
         if quantity < 1:
             return Response({"error": "Quantity must be at least 1"}, status=status.HTTP_400_BAD_REQUEST)
-            
-        # Find all matching active sessions for this "Deal"
+
+        buyer = request.user
+        if buyer.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
         matching_sessions = list(JuggleSession.objects.filter(
             product=base_session.product,
             user=base_session.user,
@@ -260,55 +283,61 @@ class JuggleViewSet(viewsets.ModelViewSet):
             is_active=True,
             expires_at__gt=timezone.now()
         ).order_by('start_time')[:quantity])
-        
+
         if len(matching_sessions) < quantity:
             return Response({"error": f"Only {len(matching_sessions)} slots remaining for this deal."}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         product = base_session.product
+        total_cost = product.base_price * quantity
+
+        if buyer.actual_balance < total_cost:
+            return Response({"error": f"Insufficient balance. Required: ETB {total_cost}, Available: ETB {buyer.actual_balance}"}, status=status.HTTP_400_BAD_REQUEST)
+
         profit_per_item = base_session.markup_price - product.base_price
         total_profit = profit_per_item * quantity
         juggler = base_session.user
-        
-        # Batch update sessions
-        for session in matching_sessions:
-            session.is_active = False
-            session.save()
-            
-        # Calculate Site Fee (Atomic)
-        from django.db.models import F
-        from decimal import Decimal
-        settings = GlobalSettings.get_settings()
-        fee_rate = settings.site_fee_percentage / Decimal('100.0')
+
+        settings_obj = GlobalSettings.get_settings()
+        fee_rate = settings_obj.site_fee_percentage / Decimal('100.0')
         site_fee = total_profit * fee_rate
         juggler_profit = total_profit - site_fee
-        
-        juggler_id = juggler.id
-        User.objects.filter(id=juggler_id).update(
-            actual_balance=F('actual_balance') + juggler_profit,
-            reserved_cb=F('reserved_cb') - (product.base_price * quantity)
-        )
-        
-        # Track Site Profit
-        GlobalSettings.objects.filter(id=1).update(
-            total_site_profit=F('total_site_profit') + site_fee
-        )
-        
-        # Decrement Stock
-        product.stock -= quantity
-        if product.stock <= 0:
-            product.stock = 0
-            product.status = 'SOLD'
-            # Inactivate ALL other competing sessions across ALL deals for this product
-            other_active = product.active_sessions.filter(is_active=True)
-            for s in other_active:
-                s.is_active = False
-                s.save()
-                u = s.user
-                u.reserved_cb -= product.base_price
-                if u.reserved_cb < 0: u.reserved_cb = 0
-                u.save()
-        product.save()
-        
+
+        with transaction.atomic():
+            User.objects.filter(id=buyer.id).update(
+                actual_balance=F('actual_balance') - total_cost
+            )
+
+            session_ids = [s.id for s in matching_sessions]
+            JuggleSession.objects.filter(id__in=session_ids).update(is_active=False)
+
+            juggler.credit_balance(juggler_profit)
+            User.objects.filter(id=juggler.id).update(
+                reserved_cb=F('reserved_cb') - (product.base_price * quantity)
+            )
+
+            GlobalSettings.objects.filter(id=1).update(
+                total_site_profit=F('total_site_profit') + site_fee
+            )
+
+            Product.objects.filter(id=product.id).update(
+                stock=F('stock') - quantity
+            )
+
+            product.refresh_from_db()
+            if product.stock <= 0:
+                product.status = 'SOLD'
+                product.save(update_fields=['status'])
+
+                other_active = product.active_sessions.filter(is_active=True)
+                other_ids = list(other_active.values_list('id', flat=True))
+                if other_ids:
+                    JuggleSession.objects.filter(id__in=other_ids).update(is_active=False)
+                    users_with_sessions = JuggleSession.objects.filter(id__in=other_ids).values_list('user_id', flat=True).distinct()
+                    for uid in users_with_sessions:
+                        User.objects.filter(id=uid).update(
+                            reserved_cb=F('reserved_cb') - product.base_price
+                        )
+
         return Response({
             "success": f"Purchased {quantity} from {juggler.username}. Total profit of {total_profit} ETB sent to their safe balance.",
             "product_status": product.status,
@@ -317,32 +346,29 @@ class JuggleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def cancel_juggle(self, request, pk=None):
-        """Allows a juggler to manually cancel their active session."""
         session = self.get_object()
         if not session.is_active:
             return Response({"error": "Session is already inactive"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         if request.user.is_anonymous:
-            user = User.objects.first()
-        else:
-            user = request.user
-            
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user = request.user
+
         if session.user != user:
             return Response({"error": "You do not own this session"}, status=status.HTTP_403_FORBIDDEN)
 
-        session.is_active = False
-        session.save()
-        
-        # Release reservation
-        user.reserved_cb -= session.product.base_price
-        if user.reserved_cb < 0: user.reserved_cb = 0
-        user.save()
-        
-        product = session.product
-        # Only revert to AVAILABLE if NO active sessions remain for this product
-        if not product.active_sessions.filter(is_active=True).exists() and product.status == 'JUGGLED':
-            product.status = 'AVAILABLE'
-            product.save()
+        with transaction.atomic():
+            session.is_active = False
+            session.save(update_fields=['is_active'])
+
+            user.reserved_cb = max(Decimal('0'), user.reserved_cb - session.product.base_price)
+            user.save(update_fields=['reserved_cb'])
+
+            product = session.product
+            if not product.active_sessions.filter(is_active=True).exists() and product.status == 'JUGGLED':
+                product.status = 'AVAILABLE'
+                product.save(update_fields=['status'])
 
         return Response({"success": "Juggle session cancelled. Virtual power released."})
 
@@ -350,106 +376,120 @@ class JuggleViewSet(viewsets.ModelViewSet):
     def my_juggles(self, request):
         cleanup_expired_juggles()
         if request.user.is_anonymous:
-            user = User.objects.first()
-        else:
-            user = request.user
-            
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user = request.user
+
         juggles = JuggleSession.objects.filter(
-            user=user, 
+            user=user,
             is_active=True,
             expires_at__gt=timezone.now()
-        ).select_related('product')
-        
+        ).select_related('product', 'product__category')
+
         serializer = JuggleSessionSerializer(juggles, many=True)
-        # Note: We still need nested product data for the UI
         data = []
-        for j in juggles:
-            j_data = JuggleSessionSerializer(j).data
+        for j, j_data in zip(juggles, serializer.data):
             j_data['product'] = ProductSerializer(j.product).data
             data.append(j_data)
-            
+
         return Response(data)
 
     @action(detail=False, methods=['post'])
     def start_juggle(self, request):
         if request.user.is_anonymous:
-            user = User.objects.first()
-        else:
-            user = request.user
-            
-        if not user:
-            return Response({"error": "No user context found"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user = request.user
 
         product_id = request.data.get('product_id')
         markup_price = request.data.get('markup_price')
-        slots = int(request.data.get('slots', 1))
-        
+
+        try:
+            slots = int(request.data.get('slots', 1))
+        except (ValueError, TypeError):
+            return Response({"error": "Slots must be a valid integer"}, status=status.HTTP_400_BAD_REQUEST)
+
         if slots < 1:
             return Response({"error": "Must juggle at least 1 slot"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         try:
             product = Product.objects.get(id=product_id)
-            if product.status == 'SOLD' or product.stock <= 0:
-                raise Product.DoesNotExist
-        except Product.DoesNotExist:
+        except (Product.DoesNotExist, TypeError):
             return Response({"error": "Product not available for juggling"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check Active Slots vs Stock
+        if product.status == 'SOLD' or product.stock <= 0:
+            return Response({"error": "Product not available for juggling"}, status=status.HTTP_400_BAD_REQUEST)
+
         active_count = product.active_sessions.filter(is_active=True, expires_at__gt=timezone.now()).count()
         remaining = product.stock - active_count
         if remaining < slots:
             return Response({"error": f"Only {remaining} slots remaining for this prototype. You requested {slots}."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Validate Balance: User must have enough Current Balance for ALL slots
         user_data = UserSerializer(user).data
         current_cb = float(user_data['current_cb'])
         total_required = float(product.base_price) * slots
-        
+
         if current_cb < total_required:
             return Response({
                 "error": f"Insufficient Virtual Power. Juggling {slots} slots requires {total_required} ETB, but you have {current_cb} ETB."
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        if not markup_price or float(markup_price) <= float(product.base_price):
+        try:
+            markup_decimal = Decimal(str(markup_price))
+        except (ValueError, TypeError, decimal.InvalidOperation):
+            return Response({"error": "Markup price must be a valid number"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if markup_decimal <= product.base_price:
             return Response({"error": "Markup price must be higher than base price"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Set expiration to a distant future for persistence
-        # Deals stay live as long as power is maintained (handled by cleanup_expired_juggles)
-        expires_at = timezone.now() + datetime.timedelta(days=36525) # Approx 100 years
-        
-        # Create sessions
-        sessions_created = []
-        for _ in range(slots):
-            session = JuggleSession.objects.create(
-                user=user,
-                product=product,
-                markup_price=markup_price,
-                expires_at=expires_at
+        expires_at = timezone.now() + datetime.timedelta(days=36525)
+
+        with transaction.atomic():
+            sessions_created = []
+            for _ in range(slots):
+                session = JuggleSession.objects.create(
+                    user=user,
+                    product=product,
+                    markup_price=markup_decimal,
+                    expires_at=expires_at
+                )
+                sessions_created.append(session)
+
+            User.objects.filter(id=user.id).update(
+                reserved_cb=F('reserved_cb') + (product.base_price * slots)
             )
-            sessions_created.append(session)
-        
-        # RESERVATION field update (legacy support/logging)
-        user.reserved_cb += (product.base_price * slots)
-        user.save()
-        
-        # Mark as JUGGLED
-        if product.status != 'JUGGLED':
-            product.status = 'JUGGLED'
-            product.save()
-        
+
+            if product.status != 'JUGGLED':
+                product.status = 'JUGGLED'
+                product.save(update_fields=['status'])
+
+            Notification.create(
+                user=user,
+                notification_type='JUGGLE_CLAIMED',
+                title='Juggles Created',
+                message=f'{slots} slots created for "{product.name}" at ETB {markup_decimal} each.'
+            )
+
         return Response(JuggleSessionSerializer(sessions_created[0]).data, status=status.HTTP_201_CREATED)
+
 
 class UserViewSet(viewsets.ModelViewSet):
     authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    permission_classes = [IsAuthenticated]
     queryset = User.objects.all()
     serializer_class = UserSerializer
+
+    def get_queryset(self):
+        if self.request.user.is_staff:
+            return User.objects.all()
+        return User.objects.filter(id=self.request.user.id)
 
     @action(detail=False, methods=['get'])
     def me(self, request):
         cleanup_expired_juggles()
         if request.user.is_anonymous:
             return Response({"error": "Not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         user = request.user
         serializer = self.get_serializer(user)
         return Response(serializer.data)
@@ -459,20 +499,20 @@ class UserViewSet(viewsets.ModelViewSet):
         user = request.user
         if user.is_anonymous:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         old_password = request.data.get('old_password')
         new_password = request.data.get('new_password')
-        
+
         if not old_password or not new_password:
             return Response({"error": "Both old and new password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
         if not user.check_password(old_password):
             return Response({"error": "Incorrect old password"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         user.set_password(new_password)
         user.save()
         from django.contrib.auth import update_session_auth_hash
-        update_session_auth_hash(request, user) # Maintain session
+        update_session_auth_hash(request, user)
         return Response({"success": "Password changed successfully"})
 
     @action(detail=False, methods=['post'])
@@ -480,26 +520,25 @@ class UserViewSet(viewsets.ModelViewSet):
         user = request.user
         if user.is_anonymous:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         username = request.data.get('username')
         email = request.data.get('email')
-        
+
         if username and username != user.username:
             if User.objects.filter(username=username).exists():
                 return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
             user.username = username
-            
+
         if email and email != user.email:
             if User.objects.filter(email=email).exists():
                 return Response({"error": "Email already exists"}, status=status.HTTP_400_BAD_REQUEST)
             user.email = email
 
-        # Seller info
         user.seller_full_name = request.data.get('seller_full_name', user.seller_full_name)
         user.business_name = request.data.get('business_name', user.business_name)
         user.seller_phone = request.data.get('seller_phone', user.seller_phone)
         user.tin_number = request.data.get('tin_number', user.tin_number)
-        
+
         user.save()
         return Response(UserSerializer(user).data)
 
@@ -508,7 +547,7 @@ class UserViewSet(viewsets.ModelViewSet):
         user = request.user
         if user.is_anonymous:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
-        
+
         user.seller_full_name = request.data.get('full_name')
         user.business_name = request.data.get('business_name')
         user.seller_phone = request.data.get('phone_number')
@@ -526,9 +565,9 @@ class UserViewSet(viewsets.ModelViewSet):
             user.vat_registration = request.FILES['vat_registration']
         if 'import_license' in request.FILES:
             user.import_license = request.FILES['import_license']
-            
+
         user.seller_status = 'PENDING'
-        user.is_seller_verified = False # Must be approved by admin
+        user.is_seller_verified = False
         user.save()
         return Response(UserSerializer(user).data)
 
@@ -545,8 +584,8 @@ class UserViewSet(viewsets.ModelViewSet):
         if not request.user.is_staff:
             return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
         user = self.get_object()
-        rev_action = request.data.get('action') # 'approve' or 'reject'
-        
+        rev_action = request.data.get('action')
+
         if rev_action == 'approve':
             user.seller_status = 'VERIFIED'
             user.is_seller_verified = True
@@ -555,7 +594,7 @@ class UserViewSet(viewsets.ModelViewSet):
             user.is_seller_verified = False
         else:
             return Response({"error": "Invalid action"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
         user.save()
         return Response(UserSerializer(user).data)
 
@@ -563,15 +602,19 @@ class UserViewSet(viewsets.ModelViewSet):
     def top_up(self, request):
         if request.user.is_anonymous:
             return Response({"error": "Login required"}, status=status.HTTP_401_UNAUTHORIZED)
+
         amount = request.data.get('amount', 0)
         try:
-            amount = float(amount)
-        except ValueError:
+            amount = Decimal(str(amount))
+        except (ValueError, TypeError, decimal.InvalidOperation):
             return Response({"error": "Invalid amount"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
+        if amount <= 0:
+            return Response({"error": "Amount must be a positive number"}, status=status.HTTP_400_BAD_REQUEST)
+
         user = request.user
-        user.actual_balance += Decimal(str(amount))
-        user.save()
+        user.credit_balance(amount)
+        user.refresh_from_db()
         return Response(UserSerializer(user).data)
 
     @action(detail=False, methods=['post'])
@@ -579,28 +622,198 @@ class UserViewSet(viewsets.ModelViewSet):
         if request.user.is_anonymous:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
         user = request.user
-        
-        user.is_juggler = True
-        user.save()
-        return Response({"success": "You are now a Juggler!", "is_juggler": True})
 
-    @action(detail=False, methods=['post'], authentication_classes=[], permission_classes=[])
+        if user.is_juggler:
+            return Response({"error": "You are already a juggler"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.email:
+            return Response({"error": "Email is required for payment. Please update your email first."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .chapa import chapa
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        
+        payment_result = chapa.initialize_payment(
+            amount=Decimal('10.00'),
+            email=user.email,
+            phone_number=user.phone_number,
+            first_name=user.first_name or user.username,
+            last_name=user.last_name or '',
+            title="Juggler Access Fee",
+            return_url=f"{frontend_url}/account?payment=juggler_success",
+            callback_url=f"{getattr(settings, 'SITE_URL', 'http://localhost:8000')}/api/payments/chapa/callback/"
+        )
+
+        if payment_result.get('success'):
+            return Response({
+                "success": "Payment initialized",
+                "checkout_url": payment_result.get('checkout_url'),
+                "tx_ref": payment_result.get('tx_ref')
+            })
+        else:
+            return Response({
+                "error": payment_result.get('error', 'Payment failed. Please try again.')
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def deposit(self, request):
+        if request.user.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+        user = request.user
+
+        if not user.email:
+            return Response({"error": "Email is required for payment. Please update your email first."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            amount = Decimal(str(request.data.get('amount', 0)))
+        except (ValueError, TypeError):
+            return Response({"error": "Invalid amount"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if amount <= 0:
+            return Response({"error": "Amount must be positive"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if amount > Decimal('100000'):
+            return Response({"error": "Maximum deposit is ETB 100,000"}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .chapa import chapa
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+
+        payment_result = chapa.initialize_payment(
+            amount=amount,
+            email=user.email,
+            phone_number=user.phone_number,
+            first_name=user.first_name or user.username,
+            last_name=user.last_name or '',
+            title="Account Deposit",
+            return_url=f"{frontend_url}/account?payment=deposit_success",
+            callback_url=f"{getattr(settings, 'SITE_URL', 'http://localhost:8000')}/api/payments/chapa/callback/"
+        )
+
+        if payment_result.get('success'):
+            return Response({
+                "success": "Payment initialized",
+                "checkout_url": payment_result.get('checkout_url'),
+                "tx_ref": payment_result.get('tx_ref')
+            })
+        else:
+            return Response({
+                "error": payment_result.get('error', 'Payment failed. Please try again.')
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'])
+    def withdraw(self, request):
+        if request.user.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+        user = request.user
+
+        try:
+            amount = Decimal(str(request.data.get('amount', 0)))
+        except (ValueError, TypeError):
+            return Response({"error": "Invalid amount"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if amount <= 0:
+            return Response({"error": "Amount must be positive"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if amount > user.actual_balance:
+            return Response({
+                "error": f"Insufficient balance. Available: ETB {user.actual_balance}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        phone_number = request.data.get('phone_number', '').strip()
+        if not phone_number:
+            return Response({"error": "Phone number is required for withdrawal"}, status=status.HTTP_400_BAD_REQUEST)
+
+        from .chapa import chapa
+        transfer_result = chapa.initiate_transfer(
+            amount=amount,
+            recipient_phone=phone_number
+        )
+
+        if transfer_result.get('success'):
+            user.actual_balance = F('actual_balance') - amount
+            user.save(update_fields=['actual_balance'])
+            user.refresh_from_db()
+            Notification.create(
+                user=user,
+                notification_type='WITHDRAWAL',
+                title='Withdrawal Processed',
+                message=f'ETB {amount:.2f} has been sent to {phone_number}.'
+            )
+            Transaction.create(user, 'WITHDRAWAL', -amount, f'Withdrawal to {phone_number}')
+            return Response({
+                "success": "Withdrawal initiated successfully",
+                "reference": transfer_result.get('reference'),
+                "balance": str(user.actual_balance)
+            })
+        else:
+            return Response({
+                "error": transfer_result.get('error', 'Withdrawal failed. Please try again.')
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], authentication_classes=[], permission_classes=[AllowAny])
+    def chapa_callback(self, request):
+        from .chapa import chapa
+        from django.views.decorators.csrf import csrf_exempt
+        from django.http import JsonResponse
+
+        tx_ref = request.data.get('tx_ref')
+        if not tx_ref:
+            return Response({"error": "Missing tx_ref"}, status=status.HTTP_400_BAD_REQUEST)
+
+        verification = chapa.verify_payment(tx_ref)
+
+        if verification.get('success') and verification.get('status') == 'success':
+            if tx_ref.startswith('THE_JUGGLE_'):
+                try:
+                    user = User.objects.get(email=verification.get('email'))
+                    amount = Decimal(str(verification.get('amount', 0)))
+                    user.credit_balance(amount)
+                    Notification.create(
+                        user=user,
+                        notification_type='DEPOSIT',
+                        title='Deposit Received',
+                        message=f'ETB {amount:.2f} has been added to your account.'
+                    )
+                    Transaction.create(user, 'DEPOSIT', amount, 'Chapa deposit')
+                    return Response({"success": "Payment verified and credited"})
+                except User.DoesNotExist:
+                    return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+            elif tx_ref.startswith('JUGGLER_'):
+                try:
+                    user = User.objects.get(email=verification.get('email'))
+                    user.is_juggler = True
+                    user.save(update_fields=['is_juggler'])
+                    Notification.create(
+                        user=user,
+                        notification_type='SYSTEM',
+                        title='Welcome to The Juggle!',
+                        message='You are now a Juggler! Start claiming products and earning profits.'
+                    )
+                    return Response({"success": "Juggler status activated"})
+                except User.DoesNotExist:
+                    return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({"status": "ignored"}, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], authentication_classes=[], permission_classes=[AllowAny])
     def logout_user(self, request):
         logout(request)
         return Response({"success": "Logged out successfully"})
 
-    @action(detail=False, methods=['post'], authentication_classes=[], permission_classes=[])
+    @action(detail=False, methods=['post'], authentication_classes=[], permission_classes=[AllowAny])
     def signup_user(self, request):
         username = request.data.get('username')
         email = request.data.get('email')
         password = request.data.get('password')
-        
+
         if not username or not email or not password:
             return Response({"error": "All fields are required"}, status=status.HTTP_400_BAD_REQUEST)
-            
+
+        if len(password) < 8:
+            return Response({"error": "Password must be at least 8 characters long"}, status=status.HTTP_400_BAD_REQUEST)
+
         if User.objects.filter(username=username).exists():
             return Response({"error": "Username already exists"}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         if User.objects.filter(email=email).exists():
             return Response({"error": "Email already exists"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -608,10 +821,10 @@ class UserViewSet(viewsets.ModelViewSet):
             user = User.objects.create_user(username=username, email=email, password=password)
             login(request, user, backend='django.contrib.auth.backends.ModelBackend')
             return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception:
+            return Response({"error": "Failed to create user. Please try again."}, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=False, methods=['post'], authentication_classes=[], permission_classes=[])
+    @action(detail=False, methods=['post'], authentication_classes=[], permission_classes=[AllowAny])
     def login_user(self, request):
         username = request.data.get('username')
         password = request.data.get('password')
@@ -620,8 +833,65 @@ class UserViewSet(viewsets.ModelViewSet):
             login(request, user)
             return Response(UserSerializer(user).data)
         return Response({"error": "Invalid credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+
+class AdminDashboardViewSet(viewsets.ViewSet):
+    permission_classes = [IsAdminUser]
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        from django.db.models import Sum, Count, Avg
+        from datetime import timedelta
+
+        total_users = User.objects.count()
+        total_jugglers = User.objects.filter(is_juggler=True).count()
+        total_sellers = User.objects.filter(seller_status='VERIFIED').count()
+        pending_sellers = User.objects.filter(seller_status='PENDING').count()
+        total_products = Product.objects.count()
+        active_products = Product.objects.filter(status='ACTIVE').count()
+        juggled_products = Product.objects.filter(status='JUGGLED').count()
+        sold_products = Product.objects.filter(status='SOLD').count()
+        total_revenue = GlobalSettings.objects.aggregate(total=Sum('total_site_profit'))['total'] or 0
+        active_pyramids = Pyramid.objects.filter(status='ACTIVE').count()
+        completed_pyramids = Pyramid.objects.filter(status='COMPLETED').count()
+        total_juggles = JuggleSession.objects.count()
+        active_juggles = JuggleSession.objects.filter(is_active=True).count()
+
+        now = timezone.now()
+        daily_stats = []
+        for i in range(30):
+            day = now - timedelta(days=29 - i)
+            day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+            day_end = day_start + timedelta(days=1)
+            day_users = User.objects.filter(date_joined__range=(day_start, day_end)).count()
+            day_products = Product.objects.filter(created_at__range=(day_start, day_end)).count()
+            daily_stats.append({
+                'date': day_start.strftime('%b %d'),
+                'users': day_users,
+                'products': day_products
+            })
+
+        return Response({
+            'total_users': total_users,
+            'total_jugglers': total_jugglers,
+            'total_sellers': total_sellers,
+            'pending_sellers': pending_sellers,
+            'total_products': total_products,
+            'active_products': active_products,
+            'juggled_products': juggled_products,
+            'sold_products': sold_products,
+            'total_revenue': float(total_revenue),
+            'active_pyramids': active_pyramids,
+            'completed_pyramids': completed_pyramids,
+            'total_juggles': total_juggles,
+            'active_juggles': active_juggles,
+            'daily_stats': daily_stats
+        })
+
+
 class CartViewSet(viewsets.ModelViewSet):
     authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    permission_classes = [IsAuthenticated]
     serializer_class = CartItemSerializer
 
     def get_queryset(self):
@@ -631,14 +901,16 @@ class CartViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def update_quantity(self, request, pk=None):
-        """Update the quantity of an existing cart item."""
         cart_item = self.get_object()
-        quantity = int(request.data.get('quantity', 1))
-        
+
+        try:
+            quantity = int(request.data.get('quantity', 1))
+        except (ValueError, TypeError):
+            return Response({"error": "Quantity must be a valid integer"}, status=status.HTTP_400_BAD_REQUEST)
+
         if quantity < 1:
             return Response({"error": "Quantity must be at least 1"}, status=status.HTTP_400_BAD_REQUEST)
-            
-        # Optional: re-verify stock/slot availability
+
         product = cart_item.product
         if cart_item.selected_offer:
             available = product.active_sessions.filter(
@@ -652,10 +924,10 @@ class CartViewSet(viewsets.ModelViewSet):
         else:
             if product.stock < quantity:
                 return Response({"error": f"Only {product.stock} items remaining in stock."}, status=status.HTTP_400_BAD_REQUEST)
-                
+
         cart_item.quantity = quantity
         cart_item.save()
-        
+
         return Response({"success": "Quantity updated", "new_quantity": cart_item.quantity})
 
     @action(detail=False, methods=['post'])
@@ -666,18 +938,25 @@ class CartViewSet(viewsets.ModelViewSet):
         product_id = request.data.get('product_id')
         offer_id = request.data.get('offer_id')
         quantity = int(request.data.get('quantity', 1))
-        
-        product = Product.objects.get(id=product_id)
+
+        try:
+            product = Product.objects.get(id=product_id)
+        except (Product.DoesNotExist, TypeError):
+            return Response({"error": "Product not found"}, status=status.HTTP_400_BAD_REQUEST)
+
         selected_offer = None
         if offer_id and offer_id != 'direct':
-            selected_offer = JuggleSession.objects.get(id=offer_id)
+            try:
+                selected_offer = JuggleSession.objects.get(id=offer_id)
+            except (JuggleSession.DoesNotExist, TypeError):
+                return Response({"error": "Offer not found"}, status=status.HTTP_400_BAD_REQUEST)
 
         cart_item, created = CartItem.objects.get_or_create(
             user=user,
             product=product,
             defaults={'selected_offer': selected_offer, 'quantity': quantity}
         )
-        
+
         if not created:
             cart_item.selected_offer = selected_offer
             cart_item.quantity += quantity
@@ -697,29 +976,234 @@ class CartViewSet(viewsets.ModelViewSet):
         if request.user.is_anonymous:
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
         user = request.user
-        items = CartItem.objects.filter(user=user)
+        items = CartItem.objects.filter(user=user).select_related('product', 'selected_offer', 'selected_offer__user')
         if not items.exists():
             return Response({'error': 'Cart is empty'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # In a real app, we'd handle payments here. 
-        # For this prototype, we just mark products as SOLD.
-        for item in items:
-            product = item.product
-            product.status = 'SOLD'
-            product.save()
-            # If there was a juggle session, mark it as completed/inactive and reward the juggler
-            if item.selected_offer:
-                juggler = item.selected_offer.user
-                item.selected_offer.is_active = False
-                item.selected_offer.save()
-                
-                # Increment deals_completed and check for tier upgrade
-                juggler.deals_completed += 1
-                if juggler.deals_completed >= 10:
-                    juggler.pyramid_tier = 1000
-                elif juggler.deals_completed >= 5:
-                    juggler.pyramid_tier = 500
-                juggler.save()
-        
-        items.delete()
+        with transaction.atomic():
+            for item in items:
+                product = item.product
+                quantity = item.quantity
+
+                if product.stock < quantity:
+                    return Response(
+                        {'error': f"Insufficient stock for {product.name}. Available: {product.stock}, Requested: {quantity}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                if item.selected_offer:
+                    juggler = item.selected_offer.user
+                    total_price = item.selected_offer.markup_price * quantity
+
+                    if user.actual_balance < total_price:
+                        return Response(
+                            {'error': f"Insufficient balance for {product.name}. Required: ETB {total_price}"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
+                    settings_obj = GlobalSettings.get_settings()
+                    fee_rate = settings_obj.site_fee_percentage / Decimal('100.0')
+                    profit = (item.selected_offer.markup_price - product.base_price) * quantity
+                    site_fee = profit * fee_rate
+                    juggler_profit = profit - site_fee
+
+                    User.objects.filter(id=user.id).update(
+                        actual_balance=F('actual_balance') - total_price
+                    )
+                    juggler.credit_balance(juggler_profit)
+                    User.objects.filter(id=juggler.id).update(
+                        reserved_cb=F('reserved_cb') - (product.base_price * quantity)
+                    )
+                    GlobalSettings.objects.filter(id=1).update(
+                        total_site_profit=F('total_site_profit') + site_fee
+                    )
+
+                    juggler.deals_completed += 1
+                    juggler.save(update_fields=['deals_completed'])
+
+                    JuggleSession.objects.filter(
+                        id=item.selected_offer.id
+                    ).update(is_active=False)
+
+                    Notification.create(
+                        user=juggler,
+                        notification_type='SALE',
+                        title='Product Sold!',
+                        message=f'Your juggle for "{product.name}" was purchased! You earned ETB {juggler_profit:.2f} profit.'
+                    )
+                    Notification.create(
+                        user=user,
+                        notification_type='PAYMENT_SENT',
+                        title='Purchase Complete',
+                        message=f'You purchased "{product.name}" for ETB {total_price:.2f}.'
+                    )
+
+                    Transaction.create(user, 'PURCHASE', -total_price, f'Purchased "{product.name}" via juggle')
+                    Transaction.create(juggler, 'JUGGLE_PROFIT', juggler_profit, f'Profit from juggling "{product.name}"')
+                else:
+                    total_price = product.base_price * quantity
+
+                    if user.actual_balance < total_price:
+                        return Response(
+                            {'error': f"Insufficient balance for {product.name}. Required: ETB {total_price}"},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+
+                    settings_obj = GlobalSettings.get_settings()
+                    fee_rate = settings_obj.site_fee_percentage / Decimal('100.0')
+                    site_fee = total_price * fee_rate
+                    seller_revenue = total_price - site_fee
+
+                    User.objects.filter(id=user.id).update(
+                        actual_balance=F('actual_balance') - total_price
+                    )
+                    if product.seller:
+                        product.seller.credit_balance(seller_revenue)
+                        Notification.create(
+                            user=product.seller,
+                            notification_type='SALE',
+                            title='Product Sold!',
+                            message=f'Your product "{product.name}" was purchased directly for ETB {total_price:.2f}. Revenue: ETB {seller_revenue:.2f}.'
+                        )
+                    GlobalSettings.objects.filter(id=1).update(
+                        total_site_profit=F('total_site_profit') + site_fee
+                    )
+
+                    Notification.create(
+                        user=user,
+                        notification_type='PAYMENT_SENT',
+                        title='Purchase Complete',
+                        message=f'You purchased "{product.name}" for ETB {total_price:.2f}.'
+                    )
+
+                    Transaction.create(user, 'PURCHASE', -total_price, f'Purchased "{product.name}" directly')
+                    if product.seller:
+                        Transaction.create(product.seller, 'SALE', seller_revenue, f'Sale of "{product.name}"')
+
+                Product.objects.filter(id=product.id).update(
+                    stock=F('stock') - quantity
+                )
+                product.refresh_from_db()
+                if product.stock <= 0:
+                    product.status = 'SOLD'
+                    product.save(update_fields=['status'])
+                    product.active_sessions.filter(is_active=True).update(is_active=False)
+
+            items.delete()
+
         return Response({'success': 'Checkout successful! Products are on their way.'})
+
+
+class NotificationViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        notifications = Notification.objects.filter(user=request.user)[:50]
+        serializer = NotificationSerializer(notifications, many=True)
+        unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({
+            'notifications': serializer.data,
+            'unread_count': unread_count
+        })
+
+    @action(detail=False, methods=['post'])
+    def mark_read(self, request):
+        notification_id = request.data.get('id')
+        if notification_id:
+            Notification.objects.filter(id=notification_id, user=request.user).update(is_read=True)
+        return Response({'success': True})
+
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        return Response({'success': True})
+
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        count = Notification.objects.filter(user=request.user, is_read=False).count()
+        return Response({'unread_count': count})
+
+
+class TransactionViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        transactions = Transaction.objects.filter(user=request.user)[:100]
+        serializer = TransactionSerializer(transactions, many=True)
+        return Response(serializer.data)
+
+
+class OrderViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = OrderSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        return Order.objects.filter(Q(buyer=user) | Q(seller=user) | Q(juggler=user))
+
+    @action(detail=True, methods=['post'])
+    def update_status(self, request, pk=None):
+        order = self.get_object()
+        new_status = request.data.get('status')
+        
+        valid_statuses = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED']
+        if new_status not in valid_statuses:
+            return Response({'error': 'Invalid status'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        order.status = new_status
+        order.save(update_fields=['status', 'updated_at'])
+        
+        Notification.create(
+            user=order.buyer,
+            notification_type='SYSTEM',
+            title=f'Order #{order.id} Updated',
+            message=f'Your order status has been updated to {new_status}.'
+        )
+        
+        return Response({'success': f'Order status updated to {new_status}'})
+
+    @action(detail=True, methods=['post'])
+    def add_tracking(self, request, pk=None):
+        order = self.get_object()
+        tracking_number = request.data.get('tracking_number', '')
+        order.tracking_number = tracking_number
+        order.status = 'SHIPPED'
+        order.save(update_fields=['tracking_number', 'status', 'updated_at'])
+        
+        Notification.create(
+            user=order.buyer,
+            notification_type='SYSTEM',
+            title=f'Order #{order.id} Shipped',
+            message=f'Tracking number: {tracking_number}'
+        )
+        
+        return Response({'success': 'Tracking number added'})
+
+
+class ReviewViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ReviewSerializer
+
+    def get_queryset(self):
+        product_id = self.request.query_params.get('product')
+        if product_id:
+            return Review.objects.filter(product_id=product_id)
+        return Review.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def product_reviews(self, request):
+        product_id = request.query_params.get('product')
+        if not product_id:
+            return Response({'error': 'Product ID required'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        reviews = Review.objects.filter(product_id=product_id)
+        avg_rating = reviews.aggregate(models.Avg('rating'))['rating__avg'] or 0
+        
+        return Response({
+            'reviews': ReviewSerializer(reviews, many=True).data,
+            'average_rating': round(avg_rating, 1),
+            'total_reviews': reviews.count()
+        })

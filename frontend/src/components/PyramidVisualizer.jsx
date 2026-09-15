@@ -22,7 +22,8 @@ const PyramidVisualizer = ({ pyramidData, currentPhase, totalSafeBalance = 10000
   const userRank = pyramidData?.user_rank || 0;
   
   // Current survival threshold for the ACTIVE cube
-  const currentThreshold = tiers.find(t => t.phase === currentPhase)?.survivors || 10;
+  const foundTier = tiers.find(t => t.phase === currentPhase);
+  const currentThreshold = foundTier ? foundTier.survivors : 10;
 
   return (
     <div className="pyramid-container" style={{ 
@@ -94,8 +95,11 @@ const PyramidVisualizer = ({ pyramidData, currentPhase, totalSafeBalance = 10000
                 <span style={{ color: 'var(--neon-purple)', fontWeight: '900', fontSize: '0.7rem', letterSpacing: '0.1em' }}>
                   CUBE {tier.phase + 1} // {tier.label}
                 </span>
+                <span style={{ color: 'var(--neon-green)', fontWeight: '900', fontSize: '0.8rem', letterSpacing: '0.05em' }}>
+                  {Math.round(tier.value).toLocaleString()} CB
+                </span>
                 <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: '0.6rem', fontWeight: 'bold' }}>
-                  ACTIVE THRESHOLD: TOP {tier.survivors}
+                  TOP {tier.survivors}
                 </span>
               </div>
 

@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import axios from 'axios';
+import api, { API_BASE } from '../api';
 import Navbar from './Navbar';
-import { 
-  User, Wallet, TrendingUp, History, ArrowRight, 
-  LogOut, Settings, LayoutDashboard, ShoppingBag, 
+import {
+  User, Wallet, TrendingUp, History, ArrowRight,
+  LogOut, Settings, LayoutDashboard, ShoppingBag,
   ChevronRight, Chrome, LogIn, ShieldCheck, UserPlus,
-  Zap
+  Zap, Activity, ArrowDownLeft, ArrowUpRight, DollarSign
 } from 'lucide-react';
-
-const API_BASE = 'http://localhost:8000';
 
 function AccountPage() {
   const [userData, setUserData] = useState(null);
@@ -19,12 +17,23 @@ function AccountPage() {
   const [authError, setAuthError] = useState('');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
+  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [isTopUpProcessing, setIsTopUpProcessing] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [paymentStep, setPaymentStep] = useState('input');
+  const [paymentError, setPaymentError] = useState('');
+  const [depositAmount, setDepositAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawPhone, setWithdrawPhone] = useState('');
 
   const fetchUser = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/api/users/me/`, { withCredentials: true });
+      const res = await api.get('/users/me/');
       setUserData(res.data);
+      if (res.data.phone_number) {
+        setPhoneNumber(res.data.phone_number);
+      }
     } catch (err) {
       console.error(err);
       setUserData(null);
@@ -35,38 +44,114 @@ function AccountPage() {
 
   useEffect(() => {
     fetchUser();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'juggler_success') {
+      fetchUser();
+      window.history.replaceState({}, '', '/account');
+    }
+    if (params.get('payment') === 'deposit_success') {
+      fetchUser();
+      window.history.replaceState({}, '', '/account');
+    }
   }, []);
 
   const handleBecomeJuggler = () => {
+    setPaymentStep('input');
+    setPaymentError('');
     setShowTopUpModal(true);
   };
 
   const handleConfirmTopUp = async () => {
     setIsTopUpProcessing(true);
+    setPaymentStep('processing');
+    setPaymentError('');
+
     try {
-      // 1. Top up 10 birr
-      await axios.post(`${API_BASE}/api/users/top_up/`, { amount: 10 }, { withCredentials: true });
-      // 2. Become Juggler
-      await axios.post(`${API_BASE}/api/users/become_juggler/`, {}, { withCredentials: true });
-      // 3. Redirect to Juggler Hub
-      window.location.href = '/'; 
+      const res = await api.post('/users/become_juggler/', {});
+      if (res.data.checkout_url) {
+        window.location.href = res.data.checkout_url;
+      }
     } catch (err) {
-      console.error(err);
-      alert("Failed to process top-up. Please try again.");
+      setPaymentStep('error');
+      setPaymentError(err.response?.data?.error || 'Payment failed. Please try again.');
+      setIsTopUpProcessing(false);
+    }
+  };
+
+  const handleDeposit = async () => {
+    const amount = parseFloat(depositAmount);
+    if (!amount || amount <= 0) {
+      setPaymentError('Please enter a valid amount');
+      return;
+    }
+
+    setIsTopUpProcessing(true);
+    setPaymentStep('processing');
+    setPaymentError('');
+
+    try {
+      const res = await api.post('/users/deposit/', { amount });
+      if (res.data.checkout_url) {
+        window.location.href = res.data.checkout_url;
+      }
+    } catch (err) {
+      setPaymentStep('error');
+      setPaymentError(err.response?.data?.error || 'Deposit failed. Please try again.');
+      setIsTopUpProcessing(false);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    const amount = parseFloat(withdrawAmount);
+    if (!amount || amount <= 0) {
+      setPaymentError('Please enter a valid amount');
+      return;
+    }
+    if (!withdrawPhone || withdrawPhone.length < 9) {
+      setPaymentError('Please enter a valid phone number');
+      return;
+    }
+
+    setIsTopUpProcessing(true);
+    setPaymentStep('processing');
+    setPaymentError('');
+
+    try {
+      const res = await api.post('/users/withdraw/', { amount, phone_number: withdrawPhone });
+      setPaymentStep('success');
+      fetchUser();
+      setTimeout(() => {
+        setShowWithdrawModal(false);
+        setPaymentStep('input');
+      }, 2000);
+    } catch (err) {
+      setPaymentStep('error');
+      setPaymentError(err.response?.data?.error || 'Withdrawal failed. Please try again.');
     } finally {
       setIsTopUpProcessing(false);
     }
   };
 
+  const handleCloseModal = () => {
+    setShowTopUpModal(false);
+    setShowDepositModal(false);
+    setShowWithdrawModal(false);
+    setPaymentStep('input');
+    setPaymentError('');
+    setDepositAmount('');
+    setWithdrawAmount('');
+    setWithdrawPhone('');
+  };
+
   const handleGoogleLogin = () => {
-    window.location.href = `${API_BASE}/accounts/google/login/`;
+    window.location.href = `${API_BASE.replace('/api', '')}/accounts/google/login/`;
   };
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setAuthError('');
     try {
-      const res = await axios.post(`${API_BASE}/api/users/login_user/`, loginData, { withCredentials: true });
+      const res = await api.post('/users/login_user/', loginData);
       setUserData(res.data);
       window.location.reload(); 
     } catch (err) {
@@ -76,7 +161,7 @@ function AccountPage() {
 
   const handleLogout = async () => {
     try {
-      await axios.post(`${API_BASE}/api/users/logout_user/`, {}, { withCredentials: true });
+      await api.post('/users/logout_user/', {});
       setUserData(null);
       window.location.href = '/shop'; 
     } catch (err) {
@@ -205,6 +290,12 @@ function AccountPage() {
               onClick={() => setActiveTab('orders')} 
             />
             <SidebarItem 
+              icon={<Wallet size={18} />} 
+              label="Transactions" 
+              active={activeTab === 'transactions'} 
+              onClick={() => setActiveTab('transactions')} 
+            />
+            <SidebarItem 
               icon={<Settings size={18} />} 
               label="Settings" 
               active={activeTab === 'settings'} 
@@ -213,12 +304,20 @@ function AccountPage() {
             
             {!userData.is_juggler && (
               <div style={{ marginTop: '1rem' }}>
+                <div style={{ 
+                  fontSize: '0.7rem', color: '#999', marginBottom: '0.5rem', 
+                  textAlign: 'center', lineHeight: '1.3' 
+                }}>
+                  Pay ETB 10 via Chapa to unlock
+                </div>
                 <button 
                   onClick={handleBecomeJuggler}
                   style={{ 
                     width: '100%', padding: '0.75rem', borderRadius: '0.75rem', 
-                    background: 'var(--neon-green)', color: '#000', border: 'none', 
-                    fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer',
+                    background: 'var(--neon-green)', 
+                    color: '#000', border: 'none', 
+                    fontWeight: '700', fontSize: '0.85rem', 
+                    cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
                   }}
                 >
@@ -261,41 +360,227 @@ function AccountPage() {
             </div>
           </div>
         )}
-        {/* MODAL: Top Up Confirmation */}
+
+        {/* MODAL: Become a Juggler */}
         {showTopUpModal && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
             <div className="card" style={{ maxWidth: '400px', width: '100%', textAlign: 'center', padding: '3rem', border: '2px solid var(--neon-green)', boxShadow: '0 0 30px rgba(52, 211, 153, 0.2)' }}>
-              <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(52, 211, 153, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(52, 211, 153, 0.2)' }}>
-                <Wallet size={32} color="var(--neon-green)" />
-              </div>
-              <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>Staking Reqquired</h2>
-              <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '2.5rem' }}>To unlock "Earn Profit" mode and join the Scarcity Auction, you must stake **10 ETB** into your actual balance. This will be added to your account instantly.</p>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1rem' }}>
-                <button 
-                  onClick={handleConfirmTopUp} 
-                  disabled={isTopUpProcessing}
-                  className="btn-checkout" 
-                  style={{ background: 'var(--neon-green)', color: '#000', fontSize: '0.9rem', fontWeight: 'bold' }}
-                >
-                  {isTopUpProcessing ? 'PROCESSING...' : 'CONFIRM & STAKE 10 ETB'}
-                </button>
-                <button 
-                  onClick={() => setShowTopUpModal(false)} 
-                  disabled={isTopUpProcessing}
-                  style={{ background: 'transparent', border: 'none', color: '#666', fontSize: '0.8rem', cursor: 'pointer' }}
-                >
-                  MAYBE LATER
-                </button>
-              </div>
+              {paymentStep === 'input' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(52, 211, 153, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(52, 211, 153, 0.2)' }}>
+                    <Wallet size={32} color="var(--neon-green)" />
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>Become a Juggler</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+                    Unlock the Juggler Hub to start juggling products, earn from price markups, and climb the pyramid tiers.
+                  </p>
+                  
+                  <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '1rem', padding: '1.25rem', marginBottom: '1.5rem', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                      <span style={{ color: '#888', fontSize: '0.9rem' }}>Access Fee</span>
+                      <span style={{ color: 'var(--neon-green)', fontWeight: '700' }}>ETB 10.00</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#888', fontSize: '0.9rem' }}>Payment Method</span>
+                      <span style={{ color: '#fff', fontWeight: '700' }}>Chapa (TeleBirr, CBE, Amole)</span>
+                    </div>
+                  </div>
+
+                  {paymentError && (
+                    <p style={{ color: '#ff4d4f', fontSize: '0.85rem', marginBottom: '1rem' }}>{paymentError}</p>
+                  )}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <button onClick={handleCloseModal} className="btn-checkout" style={{ background: 'rgba(255,255,255,0.05)', fontSize: '0.8rem' }}>CANCEL</button>
+                    <button onClick={handleConfirmTopUp} disabled={isTopUpProcessing} className="btn-checkout" style={{ background: 'var(--neon-green)', color: '#000', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                      {isTopUpProcessing ? 'REDIRECTING...' : 'PAY & UNLOCK'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {paymentStep === 'processing' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(52, 211, 153, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(52, 211, 153, 0.2)' }}>
+                    <div style={{ width: '32px', height: '32px', border: '3px solid rgba(52, 211, 153, 0.3)', borderTopColor: 'var(--neon-green)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>Redirecting to Chapa...</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem' }}>Complete your payment on the Chapa checkout page.</p>
+                </>
+              )}
+
+              {paymentStep === 'error' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(255,77,79,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(255,77,79,0.2)' }}>
+                    <span style={{ fontSize: '32px', color: '#ff4d4f' }}>✕</span>
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem', color: '#ff4d4f' }}>Payment Failed</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>{paymentError}</p>
+                  <button onClick={handleCloseModal} className="btn-checkout" style={{ background: 'rgba(255,255,255,0.05)', fontSize: '0.8rem', width: '100%' }}>TRY AGAIN</button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: Deposit */}
+        {showDepositModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div className="card" style={{ maxWidth: '400px', width: '100%', textAlign: 'center', padding: '3rem', border: '2px solid var(--neon-green)', boxShadow: '0 0 30px rgba(52, 211, 153, 0.2)' }}>
+              {paymentStep === 'input' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(52, 211, 153, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(52, 211, 153, 0.2)' }}>
+                    <Wallet size={32} color="var(--neon-green)" />
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>Deposit Funds</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>Add ETB to your balance via Chapa. Supports TeleBirr, CBE Birr, Amole, and more.</p>
+                  
+                  <div style={{ textAlign: 'left', marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#ccc', marginBottom: '0.5rem', fontWeight: '600' }}>Amount (ETB)</label>
+                    <input
+                      type="number"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                      placeholder="Enter amount"
+                      min="1"
+                      style={{ width: '100%', padding: '0.875rem 1rem', borderRadius: '0.75rem', border: '2px solid rgba(52, 211, 153, 0.3)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '1.1rem', fontWeight: '600', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                      {[100, 500, 1000, 5000].map(amt => (
+                        <button key={amt} onClick={() => setDepositAmount(amt)} style={{ flex: 1, padding: '0.5rem', borderRadius: '0.5rem', background: 'rgba(52, 211, 153, 0.1)', border: '1px solid rgba(52, 211, 153, 0.3)', color: 'var(--neon-green)', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '600' }}>
+                          {amt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {paymentError && <p style={{ color: '#ff4d4f', fontSize: '0.85rem', marginBottom: '1rem' }}>{paymentError}</p>}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <button onClick={handleCloseModal} className="btn-checkout" style={{ background: 'rgba(255,255,255,0.05)', fontSize: '0.8rem' }}>CANCEL</button>
+                    <button onClick={handleDeposit} disabled={isTopUpProcessing || !depositAmount} className="btn-checkout" style={{ background: depositAmount ? 'var(--neon-green)' : '#444', color: '#000', fontSize: '0.8rem', fontWeight: 'bold', opacity: depositAmount ? 1 : 0.5, cursor: depositAmount ? 'pointer' : 'not-allowed' }}>
+                      {isTopUpProcessing ? 'REDIRECTING...' : 'DEPOSIT'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {paymentStep === 'processing' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(52, 211, 153, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(52, 211, 153, 0.2)' }}>
+                    <div style={{ width: '32px', height: '32px', border: '3px solid rgba(52, 211, 153, 0.3)', borderTopColor: 'var(--neon-green)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>Redirecting to Chapa...</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem' }}>Complete your payment on the Chapa checkout page.</p>
+                </>
+              )}
+
+              {paymentStep === 'error' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(255,77,79,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(255,77,79,0.2)' }}>
+                    <span style={{ fontSize: '32px', color: '#ff4d4f' }}>✕</span>
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem', color: '#ff4d4f' }}>Deposit Failed</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>{paymentError}</p>
+                  <button onClick={handleCloseModal} className="btn-checkout" style={{ background: 'rgba(255,255,255,0.05)', fontSize: '0.8rem', width: '100%' }}>TRY AGAIN</button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: Withdraw */}
+        {showWithdrawModal && (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div className="card" style={{ maxWidth: '400px', width: '100%', textAlign: 'center', padding: '3rem', border: '2px solid var(--neon-purple)', boxShadow: '0 0 30px rgba(168, 85, 247, 0.2)' }}>
+              {paymentStep === 'input' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(168, 85, 247, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(168, 85, 247, 0.2)' }}>
+                    <Wallet size={32} color="var(--neon-purple)" />
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>Withdraw Funds</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>Cash out your earnings to TeleBirr. Funds arrive instantly.</p>
+                  
+                  <div style={{ background: 'rgba(255,255,255,0.05)', borderRadius: '1rem', padding: '1rem', marginBottom: '1.5rem', textAlign: 'left' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ color: '#888', fontSize: '0.9rem' }}>Available Balance</span>
+                      <span style={{ color: 'var(--neon-green)', fontWeight: '700' }}>ETB {userData?.actual_balance || '0.00'}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ textAlign: 'left', marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#ccc', marginBottom: '0.5rem', fontWeight: '600' }}>Amount (ETB)</label>
+                    <input
+                      type="number"
+                      value={withdrawAmount}
+                      onChange={(e) => setWithdrawAmount(e.target.value)}
+                      placeholder="Enter amount"
+                      max={userData?.actual_balance}
+                      style={{ width: '100%', padding: '0.875rem 1rem', borderRadius: '0.75rem', border: '2px solid rgba(168, 85, 247, 0.3)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '1.1rem', fontWeight: '600', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  <div style={{ textAlign: 'left', marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#ccc', marginBottom: '0.5rem', fontWeight: '600' }}>TeleBirr Phone Number</label>
+                    <input
+                      type="tel"
+                      value={withdrawPhone}
+                      onChange={(e) => setWithdrawPhone(e.target.value)}
+                      placeholder="09XXXXXXXX"
+                      style={{ width: '100%', padding: '0.875rem 1rem', borderRadius: '0.75rem', border: '2px solid rgba(168, 85, 247, 0.3)', background: 'rgba(0,0,0,0.3)', color: '#fff', fontSize: '1.1rem', fontWeight: '600', outline: 'none', boxSizing: 'border-box' }}
+                    />
+                  </div>
+
+                  {paymentError && <p style={{ color: '#ff4d4f', fontSize: '0.85rem', marginBottom: '1rem' }}>{paymentError}</p>}
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <button onClick={handleCloseModal} className="btn-checkout" style={{ background: 'rgba(255,255,255,0.05)', fontSize: '0.8rem' }}>CANCEL</button>
+                    <button onClick={handleWithdraw} disabled={isTopUpProcessing || !withdrawAmount || !withdrawPhone} className="btn-checkout" style={{ background: withdrawAmount && withdrawPhone ? 'var(--neon-purple)' : '#444', color: '#fff', fontSize: '0.8rem', fontWeight: 'bold', opacity: withdrawAmount && withdrawPhone ? 1 : 0.5, cursor: withdrawAmount && withdrawPhone ? 'pointer' : 'not-allowed' }}>
+                      {isTopUpProcessing ? 'PROCESSING...' : 'WITHDRAW'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {paymentStep === 'processing' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(168, 85, 247, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(168, 85, 247, 0.2)' }}>
+                    <div style={{ width: '32px', height: '32px', border: '3px solid rgba(168, 85, 247, 0.3)', borderTopColor: 'var(--neon-purple)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem' }}>Processing Withdrawal...</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem' }}>Sending funds to your TeleBirr account.</p>
+                </>
+              )}
+
+              {paymentStep === 'success' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(52, 211, 153, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(52, 211, 153, 0.2)' }}>
+                    <span style={{ fontSize: '32px' }}>✓</span>
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem', color: 'var(--neon-green)' }}>Withdrawal Successful!</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem' }}>Funds sent to your TeleBirr account.</p>
+                </>
+              )}
+
+              {paymentStep === 'error' && (
+                <>
+                  <div style={{ width: '64px', height: '64px', borderRadius: '1rem', background: 'rgba(255,77,79,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '1px solid rgba(255,77,79,0.2)' }}>
+                    <span style={{ fontSize: '32px', color: '#ff4d4f' }}>✕</span>
+                  </div>
+                  <h2 style={{ fontSize: '1.5rem', marginBottom: '0.75rem', color: '#ff4d4f' }}>Withdrawal Failed</h2>
+                  <p className="text-muted" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>{paymentError}</p>
+                  <button onClick={handleCloseModal} className="btn-checkout" style={{ background: 'rgba(255,255,255,0.05)', fontSize: '0.8rem', width: '100%' }}>TRY AGAIN</button>
+                </>
+              )}
             </div>
           </div>
         )}
 
         {/* CONTENT AREA */}
         <main style={{ flex: 1, overflowY: 'auto', paddingRight: '1rem' }}>
-          {activeTab === 'dashboard' && <DashboardTab userData={userData} />}
+          {activeTab === 'dashboard' && <DashboardTab userData={userData} onDeposit={() => { setPaymentStep('input'); setShowDepositModal(true); }} onWithdraw={() => { setPaymentStep('input'); setShowWithdrawModal(true); }} />}
           {activeTab === 'orders' && <OrdersTab />}
+          {activeTab === 'transactions' && <TransactionsTab />}
           {activeTab === 'settings' && <SettingsTab userData={userData} />}
         </main>
 
@@ -326,7 +611,7 @@ function SidebarItem({ icon, label, active, onClick }) {
   );
 }
 
-function DashboardTab({ userData }) {
+function DashboardTab({ userData, onDeposit, onWithdraw }) {
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
       <h2 style={{ fontSize: '2rem', marginBottom: '2rem', letterSpacing: '-0.02em' }}>Dashboard Overview</h2>
@@ -335,7 +620,11 @@ function DashboardTab({ userData }) {
         <div className="card" style={{ padding: '2rem', background: 'linear-gradient(135deg, rgba(82, 255, 168, 0.05), transparent)', border: '1px solid rgba(82, 255, 168, 0.1)' }}>
           <p className="text-muted" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: '700', letterSpacing: '0.1em' }}>Actual Balance</p>
           <h3 style={{ fontSize: '3rem', margin: '0.5rem 0', color: 'var(--neon-green)' }}>ETB {userData.actual_balance}</h3>
-          <p style={{ fontSize: '0.85rem', color: '#aaa' }}>Withdraw anytime to your safe account</p>
+          <p style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '1rem' }}>Withdraw anytime to your TeleBirr</p>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button onClick={onDeposit} style={{ flex: 1, padding: '0.75rem', borderRadius: '0.75rem', background: 'var(--neon-green)', color: '#000', border: 'none', fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer' }}>+ DEPOSIT</button>
+            <button onClick={onWithdraw} style={{ flex: 1, padding: '0.75rem', borderRadius: '0.75rem', background: 'transparent', color: 'var(--neon-purple)', border: '1px solid var(--neon-purple)', fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer' }}>WITHDRAW</button>
+          </div>
         </div>
 
         <div className="card" style={{ padding: '2rem', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.05), transparent)', border: '1px solid rgba(168, 85, 247, 0.1)' }}>
@@ -356,27 +645,199 @@ function DashboardTab({ userData }) {
   );
 }
 
-function OrdersTab() {
+function TransactionsTab() {
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, []);
+
+  const fetchTransactions = async () => {
+    try {
+      const res = await api.get('/transactions/');
+      setTransactions(res.data);
+    } catch (err) {
+      console.error("Error fetching transactions", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getTransactionIcon = (type) => {
+    switch (type) {
+      case 'DEPOSIT': return <ArrowDownLeft size={16} color="#22c55e" />;
+      case 'WITHDRAWAL': return <ArrowUpRight size={16} color="#ef4444" />;
+      case 'PURCHASE': return <ShoppingBag size={16} color="#3b82f6" />;
+      case 'SALE': return <DollarSign size={16} color="#22c55e" />;
+      case 'JUGGLE_PROFIT': return <Zap size={16} color="#a855f7" />;
+      default: return <Activity size={16} color="#888" />;
+    }
+  };
+
+  const getTransactionColor = (type) => {
+    switch (type) {
+      case 'DEPOSIT':
+      case 'SALE':
+      case 'JUGGLE_PROFIT': return '#22c55e';
+      case 'WITHDRAWAL':
+      case 'PURCHASE': return '#ef4444';
+      default: return '#888';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '4rem' }}>
+        <Activity size={32} className="timer-neon" />
+        <p style={{ marginTop: '1rem', color: '#888' }}>Loading transactions...</p>
+      </div>
+    );
+  }
+
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
       <h2 style={{ fontSize: '2rem', marginBottom: '2rem', letterSpacing: '-0.02em' }}>Transaction History</h2>
-      <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-              <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: '#666' }}>DATE</th>
-              <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: '#666' }}>ORDER ID</th>
-              <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: '#666' }}>STATUS</th>
-              <th style={{ padding: '1rem', textAlign: 'right', fontSize: '0.8rem', color: '#666' }}>AMOUNT</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td colSpan="4" style={{ padding: '4rem', textAlign: 'center', color: '#666' }}>No orders found</td>
-            </tr>
-          </tbody>
-        </table>
+      
+      {transactions.length === 0 ? (
+        <div className="card" style={{ padding: '4rem', textAlign: 'center' }}>
+          <Activity size={48} color="#888" style={{ marginBottom: '1rem', opacity: 0.5 }} />
+          <p className="text-muted">No transactions yet</p>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: '#666' }}>TYPE</th>
+                <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: '#666' }}>DESCRIPTION</th>
+                <th style={{ padding: '1rem', textAlign: 'right', fontSize: '0.8rem', color: '#666' }}>AMOUNT</th>
+                <th style={{ padding: '1rem', textAlign: 'right', fontSize: '0.8rem', color: '#666' }}>BALANCE</th>
+                <th style={{ padding: '1rem', textAlign: 'right', fontSize: '0.8rem', color: '#666' }}>DATE</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map(tx => (
+                <tr key={tx.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <td style={{ padding: '1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      {getTransactionIcon(tx.transaction_type)}
+                      <span style={{ fontSize: '0.85rem', fontWeight: '600' }}>{tx.transaction_type.replace('_', ' ')}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '1rem', fontSize: '0.85rem', color: '#666' }}>{tx.description}</td>
+                  <td style={{ padding: '1rem', textAlign: 'right', fontWeight: '700', color: getTransactionColor(tx.transaction_type) }}>
+                    {tx.amount > 0 ? '+' : ''}{tx.amount} ETB
+                  </td>
+                  <td style={{ padding: '1rem', textAlign: 'right', fontFamily: 'monospace', fontSize: '0.9rem' }}>
+                    {tx.balance_after} ETB
+                  </td>
+                  <td style={{ padding: '1rem', textAlign: 'right', fontSize: '0.8rem', color: '#888' }}>
+                    {new Date(tx.created_at).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrdersTab() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const fetchOrders = async () => {
+    try {
+      const res = await api.get('/orders/');
+      setOrders(res.data.results || res.data);
+    } catch (err) {
+      console.error("Error fetching orders", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'PENDING': return '#eab308';
+      case 'CONFIRMED': return '#3b82f6';
+      case 'PROCESSING': return '#a855f7';
+      case 'SHIPPED': return '#22c55e';
+      case 'DELIVERED': return '#22c55e';
+      case 'CANCELLED': return '#ef4444';
+      default: return '#888';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: 'center', padding: '4rem' }}>
+        <Activity size={32} className="timer-neon" />
+        <p style={{ marginTop: '1rem', color: '#888' }}>Loading orders...</p>
       </div>
+    );
+  }
+
+  return (
+    <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
+      <h2 style={{ fontSize: '2rem', marginBottom: '2rem', letterSpacing: '-0.02em' }}>My Orders</h2>
+      
+      {orders.length === 0 ? (
+        <div className="card" style={{ padding: '4rem', textAlign: 'center' }}>
+          <ShoppingBag size={48} color="#888" style={{ marginBottom: '1rem', opacity: 0.5 }} />
+          <p className="text-muted">No orders yet</p>
+          <Link to="/shop" style={{ color: 'var(--neon-green)', textDecoration: 'none', fontWeight: '700', marginTop: '1rem', display: 'inline-block' }}>Start Shopping &rarr;</Link>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          {orders.map(order => (
+            <div key={order.id} className="card" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Order #{order.id}</h3>
+                  <p style={{ fontSize: '0.8rem', color: '#888', margin: '0.25rem 0 0' }}>
+                    {new Date(order.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <span style={{ 
+                  padding: '0.25rem 0.75rem', borderRadius: '1rem', 
+                  fontSize: '0.75rem', fontWeight: '600',
+                  background: `${getStatusColor(order.status)}20`,
+                  color: getStatusColor(order.status),
+                  border: `1px solid ${getStatusColor(order.status)}40`
+                }}>
+                  {order.status}
+                </span>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+                {order.product_image && (
+                  <div style={{ width: '60px', height: '60px', borderRadius: '0.5rem', background: `url(${order.product_image}) center/cover`, flexShrink: 0 }} />
+                )}
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontWeight: '600', margin: 0 }}>{order.product_name}</p>
+                  <p style={{ fontSize: '0.85rem', color: '#888', margin: '0.25rem 0 0' }}>Qty: {order.quantity}</p>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <p style={{ fontWeight: '700', color: 'var(--neon-green)', margin: 0 }}>ETB {order.total_price}</p>
+                  {order.tracking_number && (
+                    <p style={{ fontSize: '0.75rem', color: '#888', margin: '0.25rem 0 0' }}>
+                      Tracking: {order.tracking_number}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -399,7 +860,7 @@ function SettingsTab({ userData }) {
     setLoading(true);
     setStatus({ type: '', message: '' });
     try {
-      await axios.post(`${API_BASE}/api/users/update_profile/`, profileData, { withCredentials: true });
+      await api.post('/users/update_profile/', profileData);
       setStatus({ type: 'success', message: 'Profile updated successfully!' });
     } catch (err) {
       setStatus({ type: 'error', message: err.response?.data?.error || 'Update failed' });
@@ -416,10 +877,10 @@ function SettingsTab({ userData }) {
     }
     setLoading(true);
     try {
-      await axios.post(`${API_BASE}/api/users/change_password/`, {
+      await api.post('/users/change_password/', {
         old_password: passwords.old,
         new_password: passwords.new
-      }, { withCredentials: true });
+      });
       setStatus({ type: 'success', message: 'Password changed successfully!' });
       setPasswords({ old: '', new: '', confirm: '' });
     } catch (err) {
@@ -557,7 +1018,10 @@ function SettingsTab({ userData }) {
         <div style={{ padding: '1.5rem', borderRadius: '1rem', background: 'rgba(255,77,79,0.05)', border: '1px solid rgba(255,77,79,0.1)' }}>
           <h4 style={{ color: '#ff4d4f', margin: '0 0 0.5rem 0' }}>Advanced Actions</h4>
           <p style={{ fontSize: '0.85rem', color: '#aaa', margin: '0 0 1rem 0' }}>Once you delete your account, there is no going back. Please be certain.</p>
-          <button style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid #ff4d4f', color: '#ff4d4f', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600' }}>
+          <button 
+            onClick={() => { if (window.confirm("Are you sure you want to delete your account? This action cannot be undone.")) { /* TODO: implement delete */ } }}
+            style={{ padding: '0.5rem 1rem', background: 'transparent', border: '1px solid #ff4d4f', color: '#ff4d4f', borderRadius: '0.5rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: '600' }}
+          >
             Delete Account
           </button>
         </div>

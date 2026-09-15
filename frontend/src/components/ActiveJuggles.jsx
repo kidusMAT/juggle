@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api, { API_BASE } from '../api';
 import { Package, ShieldCheck, Zap, Info, Pin, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import HubSidebar from './HubSidebar';
-
-const API_BASE = 'http://localhost:8000/api';
 
 function ActiveJuggles() {
   const navigate = useNavigate();
@@ -34,7 +32,7 @@ function ActiveJuggles() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const userRes = await axios.get(`${API_BASE}/users/me/`, { withCredentials: true });
+        const userRes = await api.get('/users/me/');
         setUser(userRes.data);
         if (userRes.data.seconds_until_next_change !== undefined) {
           const newTime = userRes.data.seconds_until_next_change;
@@ -46,7 +44,7 @@ function ActiveJuggles() {
           setPrevTimeLeft(newTime);
           setTimeLeft(newTime);
         }
-        const jugglesRes = await axios.get(`${API_BASE}/juggle/my_juggles/`, { withCredentials: true });
+        const jugglesRes = await api.get('/juggle/my_juggles/');
         setJuggles(jugglesRes.data);
       } catch (err) {
         console.error("Error fetching data", err);
@@ -82,10 +80,10 @@ function ActiveJuggles() {
   const handleCancel = async (sessionId) => {
     try {
       if (!window.confirm("Are you sure you want to cancel this deal? Your reserved virtual power will be released.")) return;
-      await axios.post(`${API_BASE}/juggle/${sessionId}/cancel_juggle/`, {}, { withCredentials: true });
+      await api.post(`/juggle/${sessionId}/cancel_juggle/`, {});
       showNotification("Deal cancelled successfully", "success");
       // Re-fetch to update UI immediately
-      const jugglesRes = await axios.get(`${API_BASE}/juggle/my_juggles/`, { withCredentials: true });
+      const jugglesRes = await api.get('/juggle/my_juggles/');
       setJuggles(jugglesRes.data);
     } catch (err) {
       console.error("Error cancelling juggle", err);
@@ -94,8 +92,13 @@ function ActiveJuggles() {
   };
 
   const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
+    if (seconds <= 0) return '00:00';
+    const days = Math.floor(seconds / 86400);
+    const hrs = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
+    if (days > 0) return `${days}d ${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    if (hrs > 0) return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -156,7 +159,7 @@ function ActiveJuggles() {
             ) : (
               juggles.map((juggle, idx) => {
                 const product = juggle.product;
-                const isUnderpowered = user.pyramid_data.raw_cb < product.base_price;
+                const isUnderpowered = user.pyramid_data && user.pyramid_data.raw_cb < product.base_price;
                 const bgColor = placeholderColors[idx % placeholderColors.length];
                 const isDark = bgColor === '#1f2937';
 

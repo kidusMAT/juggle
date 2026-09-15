@@ -1,14 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api, { API_BASE } from '../api';
 import Navbar from './Navbar';
 import { 
   Package, PlusCircle, CheckCircle, XCircle, DollarSign, List, 
   BarChart2, Tag, Image, Truck, Zap, Smartphone, Laptop, 
   Gamepad2, Armchair, Utensils, Footprints, Shirt, Watch, Leaf, ShieldCheck, AlertCircle, UploadCloud
 } from 'lucide-react';
-
-const API_BASE = 'http://localhost:8000/api';
 
 function SellerDashboard() {
   const navigate = useNavigate();
@@ -84,7 +82,7 @@ function SellerDashboard() {
 
     const fetchCategories = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/categories/`, { withCredentials: true });
+        const res = await api.get('/categories/');
         setCategories(res.data);
       } catch (err) { console.error("Error fetching categories", err); }
     };
@@ -92,7 +90,7 @@ function SellerDashboard() {
     const fetchMyProducts = async () => {
       setLoadingProducts(true);
       try {
-        const res = await axios.get(`${API_BASE}/products/my_products/`, { withCredentials: true });
+        const res = await api.get('/products/my_products/');
         const products = res.data;
         setMyProducts(products);
         
@@ -121,13 +119,8 @@ function SellerDashboard() {
       fetchMyProducts();
       const fetchUser = async () => {
         try {
-          const res = await axios.get(`${API_BASE}/users/me/`, { withCredentials: true });
+          const res = await api.get('/users/me/');
           setUser(res.data);
-          // If they just got verified, we can let them stay on their current tab or go to dashboard
-          // but we MUST ensure the step is correct.
-          if (res.data.seller_status === 'VERIFIED') {
-            setStep(prev => prev === 0 ? 1 : prev); 
-          }
         
         if (res.data.seller_status === 'UNVERIFIED' || res.data.seller_status === 'REJECTED' || res.data.seller_status === 'PENDING') {
           setStep(0);
@@ -150,6 +143,8 @@ function SellerDashboard() {
 
     const currentFiles = [...imageFiles];
     const duplicates = [];
+    setImageErrors([]);
+    setAiApplied(false);
     
     files.forEach(file => {
         // Anti-Multiplication: Check if file already exists in current list
@@ -160,8 +155,6 @@ function SellerDashboard() {
         }
 
         currentFiles.push(file);
-        setImageErrors([]);
-        setAiApplied(false);
         
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -275,6 +268,7 @@ function SellerDashboard() {
     payload.append('delivery_fee', formData.delivery_fee);
     payload.append('stock', formData.stock);
     payload.append('is_limited', formData.is_limited);
+    payload.append('allow_juggling', formData.allow_juggling);
     payload.append('attributes', JSON.stringify(formData.attributes));
 
     if (imageFiles.length > 0) {
@@ -287,18 +281,19 @@ function SellerDashboard() {
     }
 
     try {
-      await axios.post(`${API_BASE}/products/`, payload, { withCredentials: true });
-      showNotification("Product listed with advanced configuration!");
+      await api.post('/products/', payload);
+      showNotification("Product listed successfully!");
       fetchMyProducts();
       setStep(1);
       setActiveTab('inventory');
       
-      setFormData({ name: '', brand: '', description: '', base_price: '', category: '', attributes: {}, stock: '1', delivery_type: 'ABET', delivery_fee: '100', is_limited: false });
+      setFormData({ name: '', brand: '', description: '', base_price: '', category: '', attributes: {}, stock: '1', delivery_type: 'ABET', delivery_fee: '100', is_limited: false, allow_juggling: true });
       setImageFiles([]);
       setImagePreviews([]);
       setVariants([]);
     } catch (err) {
-      showNotification("Error posting product. Check resolution and fields.", "error");
+      const errorMsg = err.response?.data?.detail || "Error posting product. Check resolution and fields.";
+      showNotification(errorMsg, "error");
     } finally {
       setLoading(false);
     }
@@ -343,7 +338,7 @@ function SellerDashboard() {
     if (importFile) payload.append('import_license', importFile);
 
     try {
-      const res = await axios.post(`${API_BASE}/users/verify_seller/`, payload, { withCredentials: true });
+      const res = await api.post('/users/verify_seller/', payload);
       setUser(res.data);
       // Don't call setStep(1). The useEffect/render logic will handle status.
       showNotification("Seller details submitted for review!", "success");
@@ -365,23 +360,24 @@ function SellerDashboard() {
           <p className="text-muted">High-Performance Marketplace Listing Tools</p>
         </header>
 
-        {/* Tabs - Only show if verified */}
-        {user?.seller_status === 'VERIFIED' && (
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '3rem' }}>
-            <button onClick={() => setActiveTab('dashboard')} className={`btn ${activeTab === 'dashboard' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'dashboard' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'dashboard' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>Overview</button>
-            <button onClick={() => setActiveTab('inventory')} className={`btn ${activeTab === 'inventory' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'inventory' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'inventory' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>My Inventory</button>
-            <button onClick={() => setActiveTab('post')} className={`btn ${activeTab === 'post' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'post' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'post' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>Post Prototype</button>
+        {/* Tabs - Always show */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '3rem' }}>
+          <button onClick={() => setActiveTab('dashboard')} className={`btn ${activeTab === 'dashboard' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'dashboard' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'dashboard' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>Overview</button>
+          <button onClick={() => setActiveTab('inventory')} className={`btn ${activeTab === 'inventory' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'inventory' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'inventory' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>My Inventory</button>
+          <button onClick={() => setActiveTab('post')} className={`btn ${activeTab === 'post' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'post' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'post' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>Post Product</button>
+        </div>
+
+        {/* Verification notice for juggling */}
+        {user?.seller_status !== 'VERIFIED' && (
+          <div style={{ textAlign: 'center', padding: '1rem', marginBottom: '2rem', background: 'rgba(192, 132, 252, 0.1)', borderRadius: '1rem', border: '1px solid rgba(192, 132, 252, 0.2)', maxWidth: '600px', margin: '0 auto 2rem' }}>
+            <p style={{ fontSize: '0.85rem', color: 'var(--neon-purple)', margin: 0 }}>
+              <ShieldCheck size={16} style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />
+              Verification required only for listing products on the Juggle page. Direct marketplace sales work immediately.
+            </p>
           </div>
         )}
 
-        {/* If not verified and trying to access other tabs, force to post tab content */}
-        {user?.seller_status !== 'VERIFIED' && activeTab !== 'post' && (
-          <div style={{ textAlign: 'center', padding: '2rem' }}>
-             <button onClick={() => setActiveTab('post')} className="btn-black" style={{ background: 'var(--neon-green)', color: '#000' }}>Complete Verification to Access Hub</button>
-          </div>
-        )}
-
-        {activeTab === 'dashboard' && user?.seller_status === 'VERIFIED' && (
+        {activeTab === 'dashboard' && (
            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', maxWidth: '1000px', margin: '0 auto' }}>
               <div className="card" style={{ textAlign: 'center', padding: '2rem', border: '1px solid var(--neon-green)', background: 'var(--bg-card)' }}>
                 <DollarSign size={32} color="var(--neon-green)" style={{ margin: '0 auto 1rem' }} />
@@ -401,11 +397,11 @@ function SellerDashboard() {
            </div>
         )}
 
-        {activeTab === 'inventory' && user?.seller_status === 'VERIFIED' && (
+        {activeTab === 'inventory' && (
           <div className="grid-products" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '2rem' }}>
             {myProducts.map(product => (
               <div key={product.id} className="card card-alive" onClick={() => navigate(`/product/${product.id}`)} style={{ overflow: 'hidden', padding: 0, cursor: 'pointer' }}>
-                <div style={{ height: 200, background: product.image ? `url(http://localhost:8000${product.image}) center/cover` : '#333' }}></div>
+                <div style={{ height: 200, background: product.image ? `url(${API_BASE.replace('/api', '')}${product.image}) center/cover` : '#333' }}></div>
                 <div style={{ padding: '1.2rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                     <h3 style={{ fontSize: '1.1rem', margin: 0 }}>{product.name}</h3>
@@ -816,8 +812,15 @@ function SellerDashboard() {
                       
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '1rem', background: 'rgba(132, 252, 194, 0.05)', borderRadius: '0.5rem', marginBottom: '2rem' }}>
                         <input type="checkbox" id="juggling" checked={formData.allow_juggling} onChange={e => setFormData({...formData, allow_juggling: e.target.checked})} />
-                        <label htmlFor="juggling" style={{ fontSize: '0.8rem' }}>Permit Promoters to Juggle Product</label>
+                        <label htmlFor="juggling" style={{ fontSize: '0.8rem' }}>
+                          Allow Juggling <span style={{ color: '#888', fontSize: '0.75rem' }}>(requires verification)</span>
+                        </label>
                       </div>
+                      {!formData.allow_juggling && (
+                        <p style={{ fontSize: '0.75rem', color: '#888', marginTop: '-1.5rem', marginBottom: '1.5rem' }}>
+                          Unchecked = Direct marketplace sale only (no verification needed)
+                        </p>
+                      )}
 
                       <div style={{ display: 'flex', gap: '1rem' }}>
                         <button type="button" className="btn-black" style={{ flex: 1, border: '1px solid #333' }} onClick={() => setStep(3)}>Back</button>

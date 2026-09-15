@@ -1,19 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api, { API_BASE } from '../api';
 import { ShoppingBag, ShieldCheck, Zap, Info, Pin, Layers, Activity, Crown, Search, CheckCircle, XCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import HubSidebar from './HubSidebar';
 
-const API_BASE = 'http://localhost:8000/api';
+const MOCK_PRODUCTS = [
+  { id: 1, name: "Vintage Leather Satchel", brand: "Sheba Leather", description: "Handcrafted Ethiopian leather satchel with brass fittings. Each piece tells a story.", base_price: "2500.00", category: 1, category_name: "Accessories", image_url: "", status: "AVAILABLE", stock: 5, remaining_slots: 5, allow_juggling: true, is_limited: true, delivery_type: "ABET", delivery_fee: "100.00", attributes: { Material: "Full-grain Leather", Color: "Cognac" } },
+  { id: 2, name: "Yirgacheffe Coffee Beans 1kg", brand: "Ethiopia Origin", description: "Single-origin specialty coffee from Yirgacheffe. Floral notes, bright acidity.", base_price: "850.00", category: 2, category_name: "Food & Beverage", image_url: "", status: "AVAILABLE", stock: 20, remaining_slots: 20, allow_juggling: true, is_limited: false, delivery_type: "ABET", delivery_fee: "50.00", attributes: { Roast: "Light", Process: "Washed" } },
+  { id: 3, name: "Handwoven Cotton Scarf", brand: "Sabahar", description: "Traditional Ethiopian handwoven scarf. 100% cotton, natural dyes.", base_price: "450.00", category: 3, category_name: "Clothing", image_url: "", status: "AVAILABLE", stock: 15, remaining_slots: 15, allow_juggling: true, is_limited: false, delivery_type: "ABET", delivery_fee: "50.00", attributes: { Material: "Cotton", Size: "180x45cm" } },
+  { id: 4, name: "Berbere Spice Blend Set", brand: "Mama's Kitchen", description: "Authentic Ethiopian spice blend set - Berbere, Mitmita, Korarima.", base_price: "320.00", category: 2, category_name: "Food & Beverage", image_url: "", status: "AVAILABLE", stock: 30, remaining_slots: 30, allow_juggling: true, is_limited: false, delivery_type: "ABET", delivery_fee: "50.00", attributes: { Contains: "3 x 100g jars", Heat: "Medium-Hot" } },
+  { id: 5, name: "Cross Coptic Necklace", brand: "Lalibela Crafts", description: "Sterling silver Ethiopian cross pendant. Hand-finished in Addis Ababa.", base_price: "1800.00", category: 1, category_name: "Accessories", image_url: "", status: "AVAILABLE", stock: 8, remaining_slots: 8, allow_juggling: true, is_limited: true, delivery_type: "ABET", delivery_fee: "100.00", attributes: { Material: "Sterling Silver", Chain: "Included" } },
+  { id: 6, name: "Tej Honey Wine 750ml", brand: "Axum Meadery", description: "Traditional Ethiopian honey wine. Sweet, floral, naturally fermented.", base_price: "650.00", category: 2, category_name: "Food & Beverage", image_url: "", status: "AVAILABLE", stock: 12, remaining_slots: 12, allow_juggling: true, is_limited: false, delivery_type: "ABET", delivery_fee: "80.00", attributes: { ABV: "12%", Style: "Traditional" } },
+];
 
 function JugglerDashboard() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState(MOCK_PRODUCTS);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
-  const [nextPowerUp, setNextPowerUp] = useState(0);
   const [showRelive, setShowRelive] = useState(false);
-  const [prevTimeLeft, setPrevTimeLeft] = useState(300);
   const [flippedCardId, setFlippedCardId] = useState(null);
   const [markupPrices, setMarkupPrices] = useState({});
   const [slotCounts, setSlotCounts] = useState({});
@@ -49,22 +54,16 @@ function JugglerDashboard() {
 
   const fetchUserStatus = React.useCallback(async () => {
     try {
-      const userRes = await axios.get(`${API_BASE}/users/me/`, { withCredentials: true });
+      const userRes = await api.get('/users/me/');
       setUser(userRes.data);
       if (userRes.data.seconds_until_next_change !== undefined) {
         const newTime = userRes.data.seconds_until_next_change;
         // Logic for "RELIVE" effect
-        setPrevTimeLeft(prev => {
-          if (prev <= 2 && newTime > 10) {
-            setShowRelive(true);
-            setTimeout(() => setShowRelive(false), 2500);
-          }
-          return newTime;
-        });
+        if (timeLeft <= 2 && newTime > 10) {
+          setShowRelive(true);
+          setTimeout(() => setShowRelive(false), 2500);
+        }
         setTimeLeft(newTime);
-      }
-      if (userRes.data.pyramid_data?.next_winning_phase_seconds !== undefined) {
-        setNextPowerUp(userRes.data.pyramid_data.next_winning_phase_seconds);
       }
     } catch (err) {
       console.error("Error fetching user status", err);
@@ -74,14 +73,14 @@ function JugglerDashboard() {
     }
   }, [navigate]); // Stable status fetcher
 
-  const fetchProductsData = React.useCallback(async (url = `${API_BASE}/products/prototype_feed/`, isLoadMore = false) => {
+  const fetchProductsData = React.useCallback(async (url = '/products/prototype_feed/', isLoadMore = false) => {
     if (isLoadMore) {
       if (loadingMore || fetchedUrls.has(url)) return;
       setLoadingMore(true);
       setFetchedUrls(prev => new Set(prev).add(url));
     }
     try {
-      const prodRes = await axios.get(url);
+      const prodRes = await api.get(url);
       const { results, next } = prodRes.data;
       if (results) {
         if (isLoadMore) {
@@ -91,16 +90,17 @@ function JugglerDashboard() {
             return [...prev, ...newResults];
           });
         } else {
-          setProducts(results);
-          setFetchedUrls(new Set([`${API_BASE}/products/prototype_feed/`]));
+          setProducts(results.length > 0 ? results : MOCK_PRODUCTS);
+          setFetchedUrls(new Set(['/products/prototype_feed/']));
         }
         setNextPage(next);
       } else {
-        setProducts(prodRes.data);
+        setProducts(prodRes.data.length > 0 ? prodRes.data : MOCK_PRODUCTS);
         setNextPage(null);
       }
     } catch (err) {
-      console.error("Error fetching products", err);
+      console.error("Error fetching products, using mock data", err);
+      if (!isLoadMore) setProducts(MOCK_PRODUCTS);
     } finally {
       if (isLoadMore) setLoadingMore(false);
     }
@@ -109,7 +109,7 @@ function JugglerDashboard() {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/categories/`, { withCredentials: true });
+        const res = await api.get('/categories/');
         setCategories(res.data);
       } catch (err) {
         console.error("Error fetching categories", err);
@@ -118,10 +118,9 @@ function JugglerDashboard() {
     fetchCategories();
   }, []);
 
-  // Initial Data Fetch
+  // Initial Data Fetch - parallel
   useEffect(() => {
-    fetchUserStatus();
-    fetchProductsData();
+    Promise.all([fetchUserStatus(), fetchProductsData()]);
   }, []); // Only once!
 
   // Polling Intervals
@@ -139,7 +138,6 @@ function JugglerDashboard() {
         }
         return next;
       });
-      setNextPowerUp((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
     return () => {
@@ -167,8 +165,13 @@ function JugglerDashboard() {
   }, [nextPage, loadingMore, fetchProductsData]);
 
   const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
+    if (seconds <= 0) return '00:00';
+    const days = Math.floor(seconds / 86400);
+    const hrs = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
+    if (days > 0) return `${days}d ${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    if (hrs > 0) return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -178,7 +181,7 @@ function JugglerDashboard() {
     if (!markup) return showNotification("Please enter a markup price", "error");
 
     try {
-      await axios.post(`${API_BASE}/juggle/start_juggle/`, {
+      await api.post('/juggle/start_juggle/', {
         product_id: productId,
         markup_price: parseFloat(markup),
         slots: parseInt(slots)
@@ -194,22 +197,71 @@ function JugglerDashboard() {
     }
   };
 
+  // Skeleton card for product grid
+  const SkeletonCard = () => (
+    <div className="card-flip-container" style={{ perspective: '1000px', height: '480px' }}>
+      <div className="card-inner" style={{ transformStyle: 'preserve-3d', position: 'relative', width: '100%', height: '100%' }}>
+        <div className="card-front card" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', padding: '0', background: 'var(--hub-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
+          <div style={{ height: '240px', background: 'linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%)', backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite', position: 'relative' }} />
+          <div style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ height: '1.5rem', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', marginBottom: '0.75rem', animation: 'shimmer 1.5s infinite' }} />
+            <div style={{ height: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', marginBottom: '0.5rem', animation: 'shimmer 1.5s infinite' }} />
+            <div style={{ height: '1rem', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', width: '60%', animation: 'shimmer 1.5s infinite' }} />
+            <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ height: '1.5rem', width: '80px', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', animation: 'shimmer 1.5s infinite' }} />
+              <div style={{ height: '1rem', width: '60px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', animation: 'shimmer 1.5s infinite' }} />
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+              <div style={{ width: '44px', height: '44px', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.1)', animation: 'shimmer 1.5s infinite' }} />
+              <div style={{ flex: 1, height: '44px', background: 'rgba(255,255,255,0.05)', borderRadius: '0.5rem', border: '1px solid rgba(255,255,255,0.1)', animation: 'shimmer 1.5s infinite' }} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!user) {
     return (
-      <div className="juggler-hub" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', textAlign: 'center' }}>
-        <h1 style={{
-          background: 'linear-gradient(to right, var(--neon-blue), var(--neon-purple))',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          fontSize: '3rem',
-          marginBottom: '1rem',
-          animation: 'pulse 2s infinite'
-        }}>
-          Initializing Hub...
-        </h1>
-        <p className="text-muted" style={{ fontSize: '1.2rem' }}>Loading your Virtual Power</p>
+      <div className="juggler-hub" style={{ display: 'flex', padding: 0 }}>
+        <HubSidebar />
+        <div style={{ marginLeft: '220px', flex: 1, padding: '2rem' }}>
+          <div className="hub-container">
+            {/* Dashboard Stats Skeletons */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem', marginBottom: '3rem' }}>
+              {[1,2,3].map(i => (
+                <div key={i} className="hub-card" style={{ padding: '1.5rem', animation: 'shimmer 1.5s infinite', background: 'linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.03) 75%)', backgroundSize: '200% 100%' }}>
+                  <div style={{ height: '1rem', width: '40%', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', marginBottom: '1rem' }} />
+                  <div style={{ height: '3rem', width: '60%', background: 'rgba(255,255,255,0.08)', borderRadius: '4px', marginBottom: '0.5rem' }} />
+                  <div style={{ height: '0.8rem', width: '30%', background: 'rgba(255,255,255,0.05)', borderRadius: '4px' }} />
+                </div>
+              ))}
+            </div>
+
+            {/* Filter Bar Skeleton */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '2rem', flexWrap: 'wrap', padding: '0.75rem 1rem', background: 'rgba(0,0,0,0.4)', borderRadius: '1rem', border: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(12px)' }}>
+              <div style={{ flex: 1, minWidth: '200px', height: '40px', background: 'rgba(255,255,255,0.04)', borderRadius: '0.6rem', animation: 'shimmer 1.5s infinite' }} />
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[1,2,3,4].map(i => <div key={i} style={{ padding: '5px 12px', borderRadius: '2rem', background: 'rgba(255,255,255,0.04)', animation: 'shimmer 1.5s infinite' }} />)}
+              </div>
+              <div style={{ width: '120px', height: '36px', background: 'rgba(255,255,255,0.04)', borderRadius: '2rem', animation: 'shimmer 1.5s infinite' }} />
+              <div style={{ width: '140px', height: '36px', background: 'rgba(255,255,255,0.04)', borderRadius: '2rem', animation: 'shimmer 1.5s infinite' }} />
+              <div style={{ width: '120px', height: '36px', background: 'rgba(255,255,255,0.04)', borderRadius: '2rem', animation: 'shimmer 1.5s infinite' }} />
+            </div>
+
+            {/* Product Grid with Skeletons */}
+            <div className="grid-products" style={{ paddingBottom: '4rem' }}>
+              {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={`skeleton-${i}`} />)}
+            </div>
+
+            {/* Infinite Scroll Sentinel */}
+            <div ref={scrollRef} style={{ height: '60px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+              <div className="neon-pulse" style={{ color: 'var(--neon-blue)', fontSize: '0.8rem', fontWeight: 'bold' }}>SCANNING DEEPER CUBES...</div>
+            </div>
+          </div>
+        </div>
       </div>
-    );
+);
   }
 
   const pyr = user.pyramid_data || {};
@@ -218,7 +270,7 @@ function JugglerDashboard() {
     const matchesSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (p.brand && p.brand.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      p.description.toLowerCase().includes(searchQuery.toLowerCase());
+      (p.description && p.description.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesPrice =
       priceFilter === 'all' ||
@@ -232,6 +284,133 @@ function JugglerDashboard() {
 
     return matchesSearch && matchesPrice && matchesBrand && matchesCategory && matchesAffordability;
   });
+
+  // Product cards (with skeleton fallback)
+  const productCards = products.length > 0
+    ? filteredProducts.map((product, idx) => {
+        const canJuggle = user.current_cb >= product.base_price;
+        const bgColor = placeholderColors[idx % placeholderColors.length];
+        const isDark = bgColor === '#1f2937';
+        const isFlipped = flippedCardId === product.id;
+
+        return (
+          <div key={product.id} className={`card-flip-container ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : '')}`} style={{ perspective: '1000px', height: '480px' }}>
+            <div className={`card-inner ${isFlipped ? 'flipped' : ''}`} style={{ transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)', transition: 'transform 0.6s', transformStyle: 'preserve-3d', position: 'relative', width: '100%', height: '100%' }}>
+
+              {/* FRONT OF CARD */}
+              <div className="card-front card" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', padding: '0', background: 'var(--hub-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
+                <div style={{
+                  height: '240px',
+                  background: bgColor,
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+                  flexShrink: 0
+                }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2L15 8L22 9L17 14L18 21L12 17.5L6 21L7 14L2 9L9 8L12 2Z" opacity="0.5" />
+                  </svg>
+                </div>
+
+                <div style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                  <h3 style={{ fontSize: '1.1rem', marginBottom: '0.25rem', color: 'var(--hub-text-main)' }}>{product.name}</h3>
+                  <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem', color: 'var(--hub-text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{product.description}</p>
+
+                  <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ fontSize: '1.2rem', fontWeight: '800', color: canJuggle ? 'var(--neon-green)' : 'var(--hub-text-main)' }}>
+                      ETB {product.base_price}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--hub-text-muted)' }}>
+                      {product.remaining_slots} / {product.stock} Slots
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                    <button className="btn-icon" style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)', color: 'var(--hub-text-main)' }}>
+                      <Pin size={18} />
+                    </button>
+                    <button
+                      className="hub-btn hub-btn-neon"
+                      style={{ flex: 1, margin: 0 }}
+                      onClick={() => setFlippedCardId(product.id)}
+                      disabled={!canJuggle || product.remaining_slots <= 0}
+                    >
+                      {product.remaining_slots <= 0 ? 'Full' : 'Juggle'}
+                    </button>
+                  </div>
+                  {!canJuggle && product.remaining_slots > 0 &&
+                    <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center' }}>Insufficient Virtual Power</p>
+                  }
+                  {product.remaining_slots <= 0 &&
+                    <p style={{ color: 'var(--neon-gold)', fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center' }}>Prototype Maxed Out</p>
+                  }
+                </div>
+              </div>
+
+              {/* BACK OF CARD */}
+              <div className="card-back card" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', padding: '1.5rem', background: 'var(--hub-card-bg)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--neon-purple)', display: 'flex', flexDirection: 'column', transform: 'rotateY(180deg)', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', boxShadow: 'inset 0 0 10px rgba(192, 132, 252, 0.1)' }}>
+                <h3 style={{ fontSize: '1.25rem', color: 'var(--neon-gold)', marginBottom: '0.5rem' }}>Scarcity Auction</h3>
+                <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>Set your markup and occupy multiple slots.</p>
+
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--hub-text-muted)', textTransform: 'uppercase' }}>Target Selling Price (ETB)</label>
+                    <input
+                      type="number"
+                      value={markupPrices[product.id] || ''}
+                      onChange={(e) => setMarkupPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
+                      placeholder={`> ${product.base_price}`}
+                      style={{ background: 'transparent', border: 'none', borderBottom: '2px solid var(--neon-purple)', color: 'white', fontSize: '1.2rem', padding: '0.4rem 0', outline: 'none', fontWeight: 'bold', width: '100%' }}
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--hub-text-muted)', textTransform: 'uppercase' }}>Slots to Claim</label>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--neon-gold)' }}>Available: {product.remaining_slots}</span>
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max={product.remaining_slots}
+                      value={slotCounts[product.id] || 1}
+                      onChange={(e) => setSlotCounts(prev => ({ ...prev, [product.id]: Math.min(product.remaining_slots, Math.max(1, parseInt(e.target.value) || 1)) }))}
+                      style={{ background: 'transparent', border: 'none', borderBottom: '2px solid var(--neon-gold)', color: 'white', fontSize: '1.2rem', padding: '0.4rem 0', outline: 'none', fontWeight: 'bold', width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: '0.5rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--hub-text-muted)' }}>Total Required Power:</span>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--neon-green)', fontWeight: 'bold' }}>{((parseFloat(product.base_price)) * (slotCounts[product.id] || 1)).toFixed(0)} ETB</span>
+                </div>
+
+                <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  <button
+                    className="hub-btn hub-btn-neon"
+                    style={{ width: '100%' }}
+                    onClick={() => handleJuggle(product.id)}
+                    disabled={!markupPrices[product.id] || Number(markupPrices[product.id]) <= Number(product.base_price)}
+                  >
+                    Confirm Juggle
+                  </button>
+                  <button
+                    className="hub-btn"
+                    style={{ width: '100%', borderColor: 'rgba(255,255,255,0.2)', color: 'var(--hub-text-muted)' }}
+                    onClick={() => setFlippedCardId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        );
+      })
+    : Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={`skeleton-${i}`} />);
 
   return (
     <div className="juggler-hub" style={{ display: 'flex', padding: 0 }}>
@@ -488,130 +667,8 @@ function JugglerDashboard() {
           </div>
 
 
-          <div className="grid-products" style={{ paddingBottom: '4rem' }}>
-            {filteredProducts.map((product, idx) => {
-              const canJuggle = user.current_cb >= product.base_price;
-              const bgColor = placeholderColors[idx % placeholderColors.length];
-              const isDark = bgColor === '#1f2937';
-              const isFlipped = flippedCardId === product.id;
-
-              return (
-                <div key={product.id} className={`card-flip-container ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : '')}`} style={{ perspective: '1000px', height: '480px' }}>
-                  <div className={`card-inner ${isFlipped ? 'flipped' : ''}`} style={{ transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)', transition: 'transform 0.6s', transformStyle: 'preserve-3d', position: 'relative', width: '100%', height: '100%' }}>
-
-                    {/* FRONT OF CARD */}
-                    <div className="card-front card" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', padding: '0', background: 'var(--hub-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
-                      <div style={{
-                        height: '240px',
-                        background: bgColor,
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-                        flexShrink: 0
-                      }}>
-                        <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2L15 8L22 9L17 14L18 21L12 17.5L6 21L7 14L2 9L9 8L12 2Z" opacity="0.5" />
-                        </svg>
-                      </div>
-
-                      <div style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                        <h3 style={{ fontSize: '1.1rem', marginBottom: '0.25rem', color: 'var(--hub-text-main)' }}>{product.name}</h3>
-                        <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem', color: 'var(--hub-text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{product.description}</p>
-
-                        <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div style={{ fontSize: '1.2rem', fontWeight: '800', color: canJuggle ? 'var(--neon-green)' : 'var(--hub-text-main)' }}>
-                            ETB {product.base_price}
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--hub-text-muted)' }}>
-                            {product.remaining_slots} / {product.stock} Slots
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-                          <button className="btn-icon" style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)', color: 'var(--hub-text-main)' }}>
-                            <Pin size={18} />
-                          </button>
-                          <button
-                            className="hub-btn hub-btn-neon"
-                            style={{ flex: 1, margin: 0 }}
-                            onClick={() => setFlippedCardId(product.id)}
-                            disabled={!canJuggle || product.remaining_slots <= 0}
-                          >
-                            {product.remaining_slots <= 0 ? 'Full' : 'Juggle'}
-                          </button>
-                        </div>
-                        {!canJuggle && product.remaining_slots > 0 &&
-                          <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center' }}>Insufficient Virtual Power</p>
-                        }
-                        {product.remaining_slots <= 0 &&
-                          <p style={{ color: 'var(--neon-gold)', fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center' }}>Prototype Maxed Out</p>
-                        }
-                      </div>
-                    </div>
-
-                    {/* BACK OF CARD */}
-                    <div className="card-back card" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', padding: '1.5rem', background: 'var(--hub-card-bg)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--neon-purple)', display: 'flex', flexDirection: 'column', transform: 'rotateY(180deg)', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', boxShadow: 'inset 0 0 10px rgba(192, 132, 252, 0.1)' }}>
-                      <h3 style={{ fontSize: '1.25rem', color: 'var(--neon-gold)', marginBottom: '0.5rem' }}>Scarcity Auction</h3>
-                      <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>Set your markup and occupy multiple slots.</p>
-
-                      <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-                          <label style={{ fontSize: '0.7rem', color: 'var(--hub-text-muted)', textTransform: 'uppercase' }}>Target Selling Price (ETB)</label>
-                          <input
-                            type="number"
-                            value={markupPrices[product.id] || ''}
-                            onChange={(e) => setMarkupPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
-                            placeholder={`> ${product.base_price}`}
-                            style={{ background: 'transparent', border: 'none', borderBottom: '2px solid var(--neon-purple)', color: 'white', fontSize: '1.2rem', padding: '0.4rem 0', outline: 'none', fontWeight: 'bold', width: '100%' }}
-                          />
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--hub-text-muted)', textTransform: 'uppercase' }}>Slots to Claim</label>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--neon-gold)' }}>Available: {product.remaining_slots}</span>
-                          </div>
-                          <input
-                            type="number"
-                            min="1"
-                            max={product.remaining_slots}
-                            value={slotCounts[product.id] || 1}
-                            onChange={(e) => setSlotCounts(prev => ({ ...prev, [product.id]: Math.min(product.remaining_slots, Math.max(1, parseInt(e.target.value) || 1)) }))}
-                            style={{ background: 'transparent', border: 'none', borderBottom: '2px solid var(--neon-gold)', color: 'white', fontSize: '1.2rem', padding: '0.4rem 0', outline: 'none', fontWeight: 'bold', width: '100%' }}
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: '0.5rem' }}>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--hub-text-muted)' }}>Total Required Power:</span>
-                        <span style={{ fontSize: '0.9rem', color: 'var(--neon-green)', fontWeight: 'bold' }}>{((parseFloat(product.base_price)) * (slotCounts[product.id] || 1)).toFixed(0)} ETB</span>
-                      </div>
-
-                      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                        <button
-                          className="hub-btn hub-btn-neon"
-                          style={{ width: '100%' }}
-                          onClick={() => handleJuggle(product.id)}
-                          disabled={!markupPrices[product.id] || Number(markupPrices[product.id]) <= Number(product.base_price)}
-                        >
-                          Confirm Juggle
-                        </button>
-                        <button
-                          className="hub-btn"
-                          style={{ width: '100%', borderColor: 'rgba(255,255,255,0.2)', color: 'var(--hub-text-muted)' }}
-                          onClick={() => setFlippedCardId(null)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-
-                  </div>
-                </div>
-              );
-            })}
+<div className="grid-products" style={{ paddingBottom: '4rem' }}>
+            {productCards}
           </div>
 
           {/* Infinite Scroll Sentinel */}
@@ -643,8 +700,14 @@ function JugglerDashboard() {
           <span style={{ fontSize: '0.9rem', fontWeight: '600' }}>{notification.message}</span>
         </div>
       )}
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+      `}</style>
     </div>
   );
 }
-
+ 
 export default JugglerDashboard;

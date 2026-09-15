@@ -2,12 +2,6 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, ShoppingBag, Info, Zap, Layers } from 'lucide-react';
 
-const navItems = [
-  { label: 'Hub', path: '/', icon: LayoutDashboard },
-  { label: 'How It Works', path: '/#how-it-works', icon: Info },
-  { label: 'Prototype Feed', path: '/#feed', icon: Zap },
-];
-
 function HubSidebar() {
   const { pathname } = useLocation();
 

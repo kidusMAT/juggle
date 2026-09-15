@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import axios from 'axios';
+import api, { API_BASE } from '../api';
 import { ShoppingBag, ChevronLeft, CheckCircle, Tag, Truck, ShieldCheck, Zap } from 'lucide-react';
 import Navbar from './Navbar';
-
-const API_BASE = 'http://localhost:8000/api';
 
 const getFullUrl = (path) => {
   if (!path) return '';
   if (path.startsWith('http')) return path;
-  return `http://localhost:8000${path}`;
+  return `${API_BASE.replace('/api', '')}${path}`;
 };
 
 function ProductDetailPage() {
@@ -33,7 +31,7 @@ function ProductDetailPage() {
     const fetchProduct = async () => {
       setLoading(true);
       try {
-        const res = await axios.get(`${API_BASE}/products/${id}/`, { withCredentials: true });
+        const res = await api.get(`/products/${id}/`);
         setProduct(res.data);
         setSelectedImage(getFullUrl(res.data.image || res.data.image_url));
         
@@ -41,7 +39,7 @@ function ProductDetailPage() {
         let fetchedRelated = [];
         if (res.data.category) {
           try {
-            const catRes = await axios.get(`${API_BASE}/products/?category=${res.data.category}`, { withCredentials: true });
+            const catRes = await api.get(`/products/?category=${res.data.category}`);
             fetchedRelated = (catRes.data.results || catRes.data)
               .filter(p => p.id !== parseInt(id));
           } catch (e) {
@@ -52,7 +50,7 @@ function ProductDetailPage() {
         // Fallback: If no category or no results found in category, fetch latest general products
         if (fetchedRelated.length < 2) {
           try {
-            const genRes = await axios.get(`${API_BASE}/products/`, { withCredentials: true });
+            const genRes = await api.get('/products/');
             const generalItems = (genRes.data.results || genRes.data)
               .filter(p => p.id !== parseInt(id));
             
@@ -78,11 +76,11 @@ function ProductDetailPage() {
     const targetId = prodId || id;
     const targetName = prodName || product?.name;
     try {
-      await axios.post(`${API_BASE}/cart/add_to_cart/`, {
+      await api.post('/cart/add_to_cart/', {
         product_id: targetId,
         offer_id: 'direct',
         quantity: prodId ? 1 : quantity
-      }, { withCredentials: true });
+      });
       showNotification(`Added ${targetName} to cart!`, 'success');
     } catch (err) {
       showNotification(`Failed to add ${targetName} to cart.`, 'error');
@@ -220,7 +218,7 @@ function ProductDetailPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', background: '#f0f0f0', padding: '0.5rem 1rem', borderRadius: '3rem' }}>
                 <button onClick={() => setQuantity(q => Math.max(1, q-1))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', fontWeight: 'bold' }}>-</button>
                 <span style={{ fontWeight: 'bold', minWidth: '20px', textAlign: 'center' }}>{quantity}</span>
-                <button onClick={() => setQuantity(q => q+1)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', fontWeight: 'bold' }}>+</button>
+                <button onClick={() => setQuantity(q => Math.min(product.stock || 99, q+1))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', fontWeight: 'bold' }}>+</button>
               </div>
               <button 
                 className="btn-checkout" 
@@ -243,6 +241,9 @@ function ProductDetailPage() {
             </div>
           </div>
         </div>
+
+        {/* REVIEWS SECTION */}
+        <ReviewsSection productId={id} />
 
         {/* RELATED PRODUCTS */}
         {relatedProducts.length > 0 && (
@@ -352,6 +353,181 @@ function ProductDetailPage() {
           }
         }
       `}</style>
+    </div>
+  );
+}
+
+function ReviewsSection({ productId }) {
+  const [reviews, setReviews] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [avgRating, setAvgRating] = useState(0);
+  const [totalReviews, setTotalReviews] = useState(0);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [newReview, setNewReview] = useState({ rating: 5, comment: '' });
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetchReviews();
+  }, [productId]);
+
+  const fetchReviews = async () => {
+    try {
+      const res = await api.get(`/reviews/product_reviews/?product=${productId}`);
+      setReviews(res.data.reviews || []);
+      setAvgRating(res.data.average_rating || 0);
+      setTotalReviews(res.data.total_reviews || 0);
+    } catch (err) {
+      console.error("Error fetching reviews", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      await api.post('/reviews/', {
+        product: parseInt(productId),
+        rating: newReview.rating,
+        comment: newReview.comment
+      });
+      setShowReviewForm(false);
+      setNewReview({ rating: 5, comment: '' });
+      fetchReviews();
+    } catch (err) {
+      console.error("Error submitting review", err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const renderStars = (rating, interactive = false, onChange = null) => {
+    return (
+      <div style={{ display: 'flex', gap: '2px' }}>
+        {[1, 2, 3, 4, 5].map(star => (
+          <span
+            key={star}
+            onClick={() => interactive && onChange && onChange(star)}
+            style={{
+              cursor: interactive ? 'pointer' : 'default',
+              color: star <= rating ? '#eab308' : '#ddd',
+              fontSize: interactive ? '1.5rem' : '1rem'
+            }}
+          >
+            ★
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div style={{ marginTop: '4rem', borderTop: '1px solid #eee', paddingTop: '4rem' }}>
+        <p style={{ color: '#888' }}>Loading reviews...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: '4rem', borderTop: '1px solid #eee', paddingTop: '4rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+        <div>
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Reviews</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            {renderStars(Math.round(avgRating))}
+            <span style={{ fontSize: '0.9rem', color: '#888' }}>
+              {avgRating} ({totalReviews} reviews)
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowReviewForm(!showReviewForm)}
+          style={{
+            padding: '0.75rem 1.5rem', borderRadius: '0.75rem',
+            background: 'var(--neon-green)', color: '#000', border: 'none',
+            fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer'
+          }}
+        >
+          Write Review
+        </button>
+      </div>
+
+      {showReviewForm && (
+        <div className="card" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
+          <h3 style={{ fontSize: '1rem', marginBottom: '1rem' }}>Your Review</h3>
+          <form onSubmit={handleSubmitReview}>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#888', marginBottom: '0.5rem' }}>Rating</label>
+              {renderStars(newReview.rating, true, (rating) => setNewReview({ ...newReview, rating }))}
+            </div>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: '#888', marginBottom: '0.5rem' }}>Comment</label>
+              <textarea
+                value={newReview.comment}
+                onChange={(e) => setNewReview({ ...newReview, comment: e.target.value })}
+                placeholder="Share your experience with this product..."
+                style={{
+                  width: '100%', padding: '0.75rem', borderRadius: '0.5rem',
+                  border: '1px solid #eee', minHeight: '100px', resize: 'vertical',
+                  fontFamily: 'inherit', fontSize: '0.9rem'
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                type="button"
+                onClick={() => setShowReviewForm(false)}
+                style={{
+                  padding: '0.75rem 1.5rem', borderRadius: '0.75rem',
+                  background: '#f0f0f0', border: 'none', cursor: 'pointer',
+                  fontWeight: '600', fontSize: '0.85rem'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                style={{
+                  padding: '0.75rem 1.5rem', borderRadius: '0.75rem',
+                  background: 'var(--neon-green)', color: '#000', border: 'none',
+                  fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer',
+                  opacity: submitting ? 0.7 : 1
+                }}
+              >
+                {submitting ? 'Submitting...' : 'Submit Review'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {reviews.length === 0 ? (
+        <div className="card" style={{ padding: '3rem', textAlign: 'center' }}>
+          <p className="text-muted">No reviews yet. Be the first to review!</p>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          {reviews.map(review => (
+            <div key={review.id} className="card" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <div>
+                  <span style={{ fontWeight: '600' }}>{review.user_name}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#888', marginLeft: '0.75rem' }}>
+                    {new Date(review.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                {renderStars(review.rating)}
+              </div>
+              {review.comment && (
+                <p style={{ fontSize: '0.9rem', color: '#666', margin: 0 }}>{review.comment}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

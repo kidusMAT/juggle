@@ -2,12 +2,14 @@ import os
 import django
 from django.utils import timezone
 from datetime import timedelta
+from decimal import Decimal
 import random
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 django.setup()
 
 from juggle.models import User, Product, JuggleSession
+
 
 def seed_persistent_juggles():
     print("Creating persistent juggles for demo...")
@@ -18,30 +20,27 @@ def seed_persistent_juggles():
 
     products = list(Product.objects.filter(is_limited=True))
     if not products:
-        print("No limited products found. Please run seed_goat.py first.")
+        print("No limited products found. Please run seed.py first.")
         return
 
     now = timezone.now()
-    # Create 15 long-lived juggles (persistent shop content)
     for _ in range(15):
         product = random.choice(products)
         juggler = admin_user
-        # High markup for trending, low for urgent (for variety)
         markup = float(product.base_price) * random.uniform(1.1, 1.6)
-        
-        # 10 persistent ones for SHOP always having content
-        # Mix of soon and far expirations
-        lifespan = random.randint(30, 86400) # From 30s to 24h
-        
+
+        lifespan = random.randint(30, 86400)
+
         JuggleSession.objects.create(
             user=juggler,
             product=product,
-            markup_price=int(markup),
+            markup_price=Decimal(str(round(markup, 2))),
             start_time=now,
             expires_at=now + timedelta(seconds=lifespan),
             is_active=True
         )
         print(f"Created persistent juggle for {product.name} (Expiring in {lifespan}s)")
+
 
 if __name__ == '__main__':
     seed_persistent_juggles()

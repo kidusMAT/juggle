@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
-import { Search, SlidersHorizontal, User, ShoppingBag, Package, X, Zap, LogOut, Shield } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Search, SlidersHorizontal, User, ShoppingBag, Package, X, Zap, LogOut, Shield, AlertCircle, CheckCircle, Bell } from 'lucide-react';
+import api, { API_BASE } from '../api';
 
 const COLORS = [
   { name: 'Black', hex: '#111' },
@@ -24,6 +25,7 @@ function Navbar({
   priceRange, onPriceRangeChange,
   juggleOnly, onJuggleOnlyToggle
 }) {
+  const navigate = useNavigate();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const hasFilters = typeof onSearchChange === 'function';
   const [visible, setVisible] = useState(true);
@@ -31,12 +33,18 @@ function Navbar({
   const [cartCount, setCartCount] = useState(0);
   const [userData, setUserData] = useState(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showBecomeJuggler, setShowBecomeJuggler] = useState(false);
+  const [becomingJuggler, setBecomingJuggler] = useState(false);
+  const [jugglerError, setJugglerError] = useState('');
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef(null);
 
   const fetchCartCount = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/cart/');
-      const data = await res.json();
-      setCartCount(data.length);
+      const res = await api.get('/cart/');
+      setCartCount(res.data.length);
     } catch (err) {
       console.error("Error fetching cart count", err);
     }
@@ -44,10 +52,9 @@ function Navbar({
 
   const fetchUser = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/users/me/', { credentials: 'include' });
-      if (res.ok) {
-        const data = await res.json();
-        setUserData(data);
+      const res = await api.get('/users/me/');
+      if (res.status === 200) {
+        setUserData(res.data);
       } else {
         setUserData(null);
       }
@@ -57,12 +64,86 @@ function Navbar({
     }
   };
 
+  const fetchNotifications = async () => {
+    try {
+      const res = await api.get('/notifications/');
+      const newNotifications = res.data.notifications || [];
+      const newUnreadCount = res.data.unread_count || 0;
+      
+      // Check for new notifications and show browser push
+      if (unreadCount > 0 && newUnreadCount > unreadCount) {
+        const latestUnread = newNotifications.find(n => !n.is_read);
+        if (latestUnread && Notification.permission === 'granted') {
+          new Notification(latestUnread.title, {
+            body: latestUnread.message,
+            icon: '/favicon.ico'
+          });
+        }
+      }
+      
+      setNotifications(newNotifications);
+      setUnreadCount(newUnreadCount);
+    } catch (err) {
+      console.error("Error fetching notifications", err);
+    }
+  };
+
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      await Notification.requestPermission();
+    }
+  };
+
+  const markNotificationRead = async (id) => {
+    try {
+      await api.post('/notifications/mark_read/', { id });
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error("Error marking notification", err);
+    }
+  };
+
+  const markAllRead = async () => {
+    try {
+      await api.post('/notifications/mark_all_read/');
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error("Error marking all notifications", err);
+    }
+  };
+
+  const handleBecomeJuggler = async () => {
+    setBecomingJuggler(true);
+    setJugglerError('');
+    try {
+      const res = await api.post('/users/become_juggler/');
+      if (res.data.is_juggler) {
+        setUserData(prev => prev ? { ...prev, is_juggler: true } : null);
+        setShowBecomeJuggler(false);
+        navigate('/juggler');
+      }
+    } catch (err) {
+      const msg = err.response?.data?.error || 'Failed to become juggler';
+      setJugglerError(msg);
+    } finally {
+      setBecomingJuggler(false);
+    }
+  };
+
+  const handleJuggleClick = (e) => {
+    e.preventDefault();
+    if (userData?.is_juggler) {
+      navigate('/juggler');
+    } else {
+      setShowBecomeJuggler(true);
+    }
+  };
+
   const handleLogout = async () => {
     try {
-      await fetch('http://localhost:8000/api/users/logout_user/', { 
-        method: 'POST',
-        credentials: 'include'
-      });
+      await api.post('/users/logout_user/');
       setUserData(null);
       window.location.href = '/shop'; // Redirect to Buyers Hub
     } catch (err) {
@@ -73,9 +154,24 @@ function Navbar({
   useEffect(() => {
     fetchCartCount();
     fetchUser();
-    // Refresh count periodically or on event
+    fetchNotifications();
+    requestNotificationPermission();
     const interval = setInterval(fetchCartCount, 5000);
-    return () => clearInterval(interval);
+    const notifInterval = setInterval(fetchNotifications, 30000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(notifInterval);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setShowNotifications(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   useEffect(() => {
@@ -190,11 +286,9 @@ function Navbar({
 
           {/* Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            <Link to="/juggler" style={{ textDecoration: 'none' }}>
-              <button className="btn-black" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }}>
-                JUGGLE
-              </button>
-            </Link>
+            <button className="btn-black" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }} onClick={handleJuggleClick}>
+              JUGGLE
+            </button>
             <Link to="/seller" style={{ color: 'inherit' }}>
               <Package size={22} style={{ cursor: 'pointer' }} title="Seller Dashboard" />
             </Link>
@@ -214,6 +308,80 @@ function Navbar({
                 }}>{cartCount}</span>
               )}
             </Link>
+
+            <div ref={notifRef} style={{ position: 'relative' }}>
+              <div
+                onClick={() => setShowNotifications(!showNotifications)}
+                style={{ color: 'inherit', position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+              >
+                <Bell size={22} />
+                {unreadCount > 0 && (
+                  <span style={{
+                    position: 'absolute', top: '-5px', right: '-5px',
+                    background: '#7c3aed', color: 'white', fontSize: '0.65rem', fontWeight: 'bold',
+                    borderRadius: '50%', width: '16px', height: '16px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                  }}>{unreadCount}</span>
+                )}
+              </div>
+
+              {showNotifications && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, width: '360px', maxHeight: '480px',
+                  background: 'white', borderRadius: '1rem', boxShadow: '0 12px 40px rgba(0,0,0,0.15)',
+                  border: '1px solid #f0f0f0', overflow: 'hidden', zIndex: 999, marginTop: '0.5rem'
+                }}>
+                  <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: '700', margin: 0 }}>Notifications</h3>
+                    {unreadCount > 0 && (
+                      <button onClick={markAllRead} style={{ background: 'none', border: 'none', color: '#7c3aed', fontSize: '0.75rem', fontWeight: '600', cursor: 'pointer' }}>
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ maxHeight: '360px', overflowY: 'auto' }}>
+                    {notifications.length === 0 ? (
+                      <div style={{ padding: '3rem', textAlign: 'center', color: '#999', fontSize: '0.9rem' }}>
+                        No notifications yet
+                      </div>
+                    ) : (
+                      notifications.map(notif => (
+                        <div
+                          key={notif.id}
+                          onClick={() => markNotificationRead(notif.id)}
+                          style={{
+                            padding: '1rem 1.25rem', borderBottom: '1px solid #f8f8f8', cursor: 'pointer',
+                            background: notif.is_read ? 'white' : 'rgba(124,58,237,0.03)',
+                            transition: 'background 0.15s'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                            <div style={{
+                              width: '8px', height: '8px', borderRadius: '50%', marginTop: '6px', flexShrink: 0,
+                              background: notif.is_read ? '#ddd' : '#7c3aed'
+                            }} />
+                            <div style={{ flex: 1 }}>
+                              <p style={{ fontSize: '0.85rem', fontWeight: '600', margin: '0 0 0.25rem', color: '#333' }}>{notif.title}</p>
+                              <p style={{ fontSize: '0.8rem', color: '#666', margin: 0, lineHeight: '1.4' }}>{notif.message}</p>
+                              <p style={{ fontSize: '0.7rem', color: '#aaa', margin: '0.5rem 0 0' }}>
+                                {new Date(notif.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {notifications.length > 0 && (
+                    <div style={{ padding: '0.75rem', borderTop: '1px solid #f0f0f0', textAlign: 'center' }}>
+                      <Link to="/account?tab=notifications" onClick={() => setShowNotifications(false)} style={{ color: '#7c3aed', fontSize: '0.8rem', fontWeight: '600', textDecoration: 'none' }}>
+                        View all notifications
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <Link to="/account" style={{ color: 'inherit', display: 'flex', alignItems: 'center' }}>
@@ -434,6 +602,53 @@ function Navbar({
           </div>
         )}
       </nav>
+      {/* MODAL: Become Juggler */}
+      {showBecomeJuggler && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ maxWidth: '420px', width: '100%', textAlign: 'center', padding: '2.5rem', border: '2px solid var(--neon-purple)', boxShadow: '0 0 30px rgba(168, 85, 247, 0.2)' }}>
+            <div style={{ width: '72px', height: '72px', borderRadius: '1rem', background: 'rgba(192, 132, 252, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', border: '2px solid var(--neon-purple)', boxShadow: '0 0 20px rgba(192, 132, 252, 0.2)' }}>
+              <Zap size={36} color="var(--neon-purple)" />
+            </div>
+            <h2 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Become a Juggler</h2>
+            <p className="text-muted" style={{ fontSize: '0.95rem', marginBottom: '1.5rem', maxWidth: '320px', margin: '0 auto 1.5rem' }}>
+              Unlock the Juggler Hub to start juggling products, earn from price markups, and climb the pyramid tiers.
+            </p>
+            
+            <div style={{ background: 'rgba(0,0,0,0.03)', borderRadius: '1rem', padding: '1.5rem', marginBottom: '1.5rem', textAlign: 'left' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <span className="text-muted" style={{ fontSize: '0.85rem' }}>Access Fee</span>
+                <span style={{ fontSize: '1.25rem', fontWeight: '900', color: 'var(--neon-green)' }}>ETB 10.00</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <span className="text-muted" style={{ fontSize: '0.85rem' }}>Your Balance</span>
+                <span style={{ fontSize: '1.1rem', fontWeight: '700', color: userData?.actual_balance >= 10 ? 'var(--neon-green)' : '#ef4444' }}>
+                  ETB {userData?.actual_balance || 0}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.75rem', borderTop: '1px solid #eee' }}>
+                <span className="text-muted" style={{ fontSize: '0.85rem' }}>Remaining</span>
+                <span style={{ fontSize: '1.1rem', fontWeight: '700', color: userData?.actual_balance >= 10 ? 'var(--neon-green)' : '#ef4444' }}>
+                  ETB {(userData?.actual_balance || 0) - 10}
+                </span>
+              </div>
+            </div>
+
+            {jugglerError && (
+              <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '0.75rem', padding: '0.75rem', marginBottom: '1.5rem', color: '#ef4444', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', justifyContent: 'center' }}>
+                <AlertCircle size={16} />
+                {jugglerError}
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <button onClick={() => setShowBecomeJuggler(false)} className="btn-checkout" style={{ background: 'rgba(255,255,255,0.05)', fontSize: '0.85rem', color: 'var(--text-primary)' }}>CANCEL</button>
+              <button onClick={handleBecomeJuggler} className="btn-checkout" style={{ background: userData?.actual_balance >= 10 ? '#000' : '#666', color: '#fff', fontSize: '0.85rem' }} disabled={becomingJuggler || (userData?.actual_balance || 0) < 10}>
+                {becomingJuggler ? 'PROCESSING...' : 'PAY ETB 10 & UNLOCK'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* MODAL: Logout Confirmation */}
       {showLogoutConfirm && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>

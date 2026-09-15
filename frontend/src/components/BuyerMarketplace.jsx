@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
+import api, { API_BASE } from '../api';
 import { ShoppingBag, ChevronRight, ChevronLeft, CheckCircle, XCircle, CreditCard, ShieldCheck, Flame, Clock } from 'lucide-react';
 import Navbar from './Navbar';
-
-const API_BASE = 'http://localhost:8000/api';
 
 const placeholderColors = [
   '#fce7f3', '#ecfdf5', '#e0f2fe', '#1f2937', '#f3f4f6',
@@ -45,7 +43,7 @@ const FloatingParticles = ({ count = 15 }) => {
 
 const Sparks = ({ count = 30 }) => {
   return (
-    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 100 }}>
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 10 }}>
       {[...Array(count)].map((_, i) => {
         const angle = Math.random() * Math.PI * 2;
         const velocity = 20 + Math.random() * 60;
@@ -121,7 +119,7 @@ function BuyerMarketplace() {
   const fetchProducts = async (url = `${API_BASE}/products/buyer_market/`, isLoadMore = false) => {
     if (isLoadMore) setLoadingMore(true);
     try {
-      const res = await axios.get(url, { withCredentials: true });
+      const res = await api.get(url);
       const { results, next } = res.data;
       
       if (results && results.length > 0) {
@@ -145,14 +143,14 @@ function BuyerMarketplace() {
 
   const fetchCategories = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/categories/`, { withCredentials: true });
+      const res = await api.get(`${API_BASE}/categories/`);
       setAllCategories(res.data);
     } catch (err) { console.error("Error fetching categories", err); }
   };
 
   const fetchPhaseTime = async () => {
     try {
-      const res = await axios.get(`${API_BASE}/users/me/`, { withCredentials: true });
+      const res = await api.get(`${API_BASE}/users/me/`);
       if (res.data.seconds_until_next_change !== undefined) {
         setPhaseTimeLeft(res.data.seconds_until_next_change);
       }
@@ -198,9 +196,7 @@ function BuyerMarketplace() {
           if (deal.expires_at) {
             const expiry = new Date(deal.expires_at).getTime();
             if (expiry <= currentTime) {
-              if (!expiredProductIds.has(deal.id)) {
-                itemsToRemove.push(deal.id);
-              }
+              itemsToRemove.push(deal.id);
             }
           }
           return deal;
@@ -245,18 +241,23 @@ function BuyerMarketplace() {
   }, [nextPage, loadingMore]);
 
   const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
+    if (seconds <= 0) return '00:00';
+    const days = Math.floor(seconds / 86400);
+    const hrs = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
+    if (days > 0) return `${days}d ${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    if (hrs > 0) return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const handleAddToCart = async (deal) => {
     try {
-      await axios.post('http://localhost:8000/api/cart/add_to_cart/', {
+      await api.post(`${API_BASE}/cart/add_to_cart/`, {
         product_id: deal.product.id,
         offer_id: deal.is_direct ? 'direct' : deal.id,
         quantity: 1
-      }, { withCredentials: true });
+      });
       showNotification(`Added ${deal.product.name} to cart!`, 'success');
     } catch (err) {
       console.error("Cart error", err);
@@ -277,7 +278,7 @@ function BuyerMarketplace() {
           payload = { quantity: selectedQuantity }; 
         }
         
-        const res = await axios.post(endpoint, payload, { withCredentials: true });
+        const res = await api.post(endpoint, payload);
         showNotification(res.data.success, "success");
         setCheckoutModalOpen(false);
         setSelectedOffer(null);
@@ -301,10 +302,10 @@ function BuyerMarketplace() {
       .filter(deal => {
         const p = deal.product;
         const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                              p.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              (p.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                               (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()));
         const matchesCategory = selectedCategory === 'All' || p.category_name === selectedCategory;
-        const matchesBrand = selectedBrand === 'All' || p.brand.toLowerCase() === selectedBrand.toLowerCase();
+        const matchesBrand = selectedBrand === 'All' || (p.brand || '').toLowerCase() === selectedBrand.toLowerCase();
         const price = parseFloat(deal.markup_price);
         const matchesPrice = price >= priceRange[0] && price <= priceRange[1];
         const matchesJuggle = !juggleOnly || !deal.is_direct;
@@ -378,7 +379,7 @@ function BuyerMarketplace() {
         <div className={`card card-alive ${isDestroying ? 'destructing' : ''} ${!isDirectSale && productSecondsLeft < 60 ? 'vibrating' : ( !isDirectSale ? 'juggling' : '')}`} style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', background: '#fff', position: 'relative' }}>
           <div style={{ 
             height: isHorizontal ? '200px' : '240px', 
-            background: product.image ? `url(http://localhost:8000${product.image}) center/cover` : (product.image_url ? `url(${product.image_url}) center/cover` : bgColor),
+            background: product.image ? `url(${API_BASE.replace('/api', '')}${product.image}) center/cover` : (product.image_url ? `url(${product.image_url}) center/cover` : bgColor),
             position: 'relative',
             display: 'flex',
             alignItems: 'center',
@@ -584,7 +585,7 @@ function BuyerMarketplace() {
               </div>
               <div className="hero-glitch" style={{ 
                 flex: 1, 
-                background: heroDeal.product.image ? `url(http://localhost:8000${heroDeal.product.image}) center/cover` : (heroDeal.product.image_url ? `url(${heroDeal.product.image_url}) center/cover` : '#222'),
+                background: heroDeal.product.image ? `url(${API_BASE.replace('/api', '')}${heroDeal.product.image}) center/cover` : (heroDeal.product.image_url ? `url(${heroDeal.product.image_url}) center/cover` : '#222'),
                 boxShadow: 'inset 50px 0 100px #000'
               }}></div>
             </div>
@@ -671,7 +672,7 @@ function BuyerMarketplace() {
                   <div className="card card-alive" style={{ padding: '0', overflow: 'hidden', height: '100%', background: '#fff' }}>
                     <div style={{ 
                       height: '200px', 
-                      background: representativeDeal.product.image ? `url(http://localhost:8000${representativeDeal.product.image}) center/cover` : (representativeDeal.product.image_url ? `url(${representativeDeal.product.image_url}) center/cover` : '#eee'),
+                      background: representativeDeal.product.image ? `url(${API_BASE.replace('/api', '')}${representativeDeal.product.image}) center/cover` : (representativeDeal.product.image_url ? `url(${representativeDeal.product.image_url}) center/cover` : '#eee'),
                       position: 'relative',
                       display: 'flex',
                       alignItems: 'center',

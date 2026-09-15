@@ -1,0 +1,531 @@
+{
+  "communities": {
+    "0": [
+      "frontend_src_app",
+      "frontend_src_app_app",
+      "frontend_src_components_accountpage",
+      "frontend_src_components_accountpage_accountpage",
+      "frontend_src_components_accountpage_dashboardtab",
+      "frontend_src_components_accountpage_orderstab",
+      "frontend_src_components_accountpage_settingstab",
+      "frontend_src_components_accountpage_sidebaritem",
+      "frontend_src_components_activejuggles",
+      "frontend_src_components_activejuggles_activejuggles",
+      "frontend_src_components_admindashboard",
+      "frontend_src_components_admindashboard_admindashboard",
+      "frontend_src_components_buyermarketplace",
+      "frontend_src_components_buyermarketplace_buyermarketplace",
+      "frontend_src_components_buyermarketplace_floatingparticles",
+      "frontend_src_components_buyermarketplace_placeholdercolors",
+      "frontend_src_components_buyermarketplace_sparks",
+      "frontend_src_components_cartpage",
+      "frontend_src_components_cartpage_cartpage",
+      "frontend_src_components_hubsidebar",
+      "frontend_src_components_hubsidebar_hubsidebar",
+      "frontend_src_components_hubsidebar_navitems",
+      "frontend_src_components_hubsidebar_sidebarlink",
+      "frontend_src_components_jugglerdashboard",
+      "frontend_src_components_jugglerdashboard_jugglerdashboard",
+      "frontend_src_components_jugglerdashboard_mock_products",
+      "frontend_src_components_navbar",
+      "frontend_src_components_navbar_colors",
+      "frontend_src_components_navbar_navbar",
+      "frontend_src_components_navbar_sizes",
+      "frontend_src_components_productdetailpage",
+      "frontend_src_components_productdetailpage_getfullurl",
+      "frontend_src_components_productdetailpage_productdetailpage",
+      "frontend_src_components_pyramidpage",
+      "frontend_src_components_pyramidpage_pyramidpage",
+      "frontend_src_components_pyramidvisualizer",
+      "frontend_src_components_pyramidvisualizer_pyramidvisualizer",
+      "frontend_src_components_sellerdashboard",
+      "frontend_src_components_sellerdashboard_qcitem",
+      "frontend_src_components_sellerdashboard_sellerdashboard",
+      "frontend_src_components_signuppage",
+      "frontend_src_components_signuppage_signuppage",
+      "frontend_src_main",
+      "ref_axios",
+      "ref_lucide_react",
+      "ref_react",
+      "ref_react_router_dom"
+    ],
+    "1": [
+      "abstractuser",
+      "diagnose_market",
+      "diagnose_market_check_market",
+      "juggle_admin",
+      "juggle_admin_productadmin",
+      "juggle_admin_useradmin",
+      "juggle_models",
+      "juggle_models_category",
+      "juggle_models_category_str",
+      "juggle_models_jugglesession",
+      "juggle_models_jugglesession_is_expired",
+      "juggle_models_jugglesession_str",
+      "juggle_models_meta",
+      "juggle_models_product",
+      "juggle_models_product_str",
+      "juggle_models_user",
+      "juggle_models_user_str",
+      "market_maker",
+      "market_maker_run_market_maker",
+      "massive_population",
+      "massive_population_massive_population",
+      "persistent_juggles",
+      "persistent_juggles_seed_persistent_juggles",
+      "register",
+      "seed",
+      "seed_bulk",
+      "seed_bulk_seed_bulk_products",
+      "seed_categories",
+      "seed_categories_seed_categories",
+      "seed_food",
+      "seed_food_seed_food",
+      "seed_goat",
+      "seed_goat_seed",
+      "seed_massive",
+      "seed_massive_seed",
+      "seed_seed",
+      "simulate_juggles",
+      "simulate_juggles_simulate_juggles",
+      "ultra_scale_simulation",
+      "ultra_scale_simulation_ultra_scale_population",
+      "verify_auction",
+      "verify_auction_verify_auction"
+    ],
+    "2": [
+      "juggle_models_cartitem",
+      "juggle_models_cartitem_str",
+      "juggle_models_productimage",
+      "juggle_models_productimage_str",
+      "juggle_models_productvariant",
+      "juggle_models_productvariant_str",
+      "juggle_serializers",
+      "juggle_serializers_buyermarketserializer",
+      "juggle_serializers_buyermarketserializer_get_active_offers",
+      "juggle_serializers_cartitemserializer",
+      "juggle_serializers_categoryserializer",
+      "juggle_serializers_dealserializer",
+      "juggle_serializers_jugglesessionserializer",
+      "juggle_serializers_meta",
+      "juggle_serializers_productimageserializer",
+      "juggle_serializers_productserializer",
+      "juggle_serializers_productserializer_create",
+      "juggle_serializers_productserializer_get_remaining_slots",
+      "juggle_serializers_productserializer_validate_image",
+      "juggle_serializers_productvariantserializer",
+      "juggle_serializers_rationale_143",
+      "juggle_serializers_rationale_158",
+      "juggle_urls",
+      "juggle_views",
+      "juggle_views_categoryviewset",
+      "juggle_views_juggleviewset",
+      "juggle_views_juggleviewset_my_juggles",
+      "juggle_views_juggleviewset_start_juggle",
+      "juggle_views_largeresultssetpagination",
+      "juggle_views_productviewset",
+      "juggle_views_productviewset_buyer_market",
+      "juggle_views_productviewset_get_queryset",
+      "juggle_views_productviewset_my_products",
+      "juggle_views_productviewset_perform_create",
+      "juggle_views_rationale_120",
+      "juggle_views_rationale_227",
+      "juggle_views_unsafesessionauthentication",
+      "juggle_views_unsafesessionauthentication_enforce_csrf",
+      "sessionauthentication"
+    ],
+    "3": [
+      "frontend_eslint_config",
+      "frontend_package",
+      "frontend_package_dependencies",
+      "frontend_package_dependencies_axios",
+      "frontend_package_dependencies_lucide_react",
+      "frontend_package_dependencies_react",
+      "frontend_package_dependencies_react_dom",
+      "frontend_package_dependencies_react_router_dom",
+      "frontend_package_devdependencies",
+      "frontend_package_devdependencies_eslint",
+      "frontend_package_devdependencies_eslint_js",
+      "frontend_package_devdependencies_eslint_plugin_react_hooks",
+      "frontend_package_devdependencies_eslint_plugin_react_refresh",
+      "frontend_package_devdependencies_globals",
+      "frontend_package_devdependencies_types_react",
+      "frontend_package_devdependencies_types_react_dom",
+      "frontend_package_devdependencies_vite",
+      "frontend_package_devdependencies_vitejs_plugin_react",
+      "frontend_package_name",
+      "frontend_package_private",
+      "frontend_package_scripts",
+      "frontend_package_scripts_build",
+      "frontend_package_scripts_dev",
+      "frontend_package_scripts_lint",
+      "frontend_package_scripts_preview",
+      "frontend_package_type",
+      "frontend_package_version",
+      "frontend_vite_config",
+      "ref_eslint",
+      "ref_eslint_js",
+      "ref_eslint_plugin_react_hooks",
+      "ref_eslint_plugin_react_refresh",
+      "ref_globals",
+      "ref_react_dom",
+      "ref_types_react",
+      "ref_types_react_dom",
+      "ref_vite",
+      "ref_vitejs_plugin_react"
+    ],
+    "4": [
+      "action",
+      "juggle_serializers_userserializer",
+      "juggle_serializers_userserializer_get_current_cb",
+      "juggle_views_cartviewset",
+      "juggle_views_cartviewset_add_to_cart",
+      "juggle_views_cartviewset_checkout",
+      "juggle_views_cartviewset_clear_cart",
+      "juggle_views_cartviewset_get_queryset",
+      "juggle_views_cartviewset_update_quantity",
+      "juggle_views_cleanup_expired_juggles",
+      "juggle_views_juggleviewset_cancel_juggle",
+      "juggle_views_productviewset_prototype_feed",
+      "juggle_views_rationale_320",
+      "juggle_views_rationale_36",
+      "juggle_views_rationale_634",
+      "juggle_views_standardresultssetpagination",
+      "juggle_views_userviewset",
+      "juggle_views_userviewset_become_juggler",
+      "juggle_views_userviewset_change_password",
+      "juggle_views_userviewset_login_user",
+      "juggle_views_userviewset_logout_user",
+      "juggle_views_userviewset_me",
+      "juggle_views_userviewset_pending_sellers",
+      "juggle_views_userviewset_review_seller",
+      "juggle_views_userviewset_signup_user",
+      "juggle_views_userviewset_top_up",
+      "juggle_views_userviewset_update_profile",
+      "juggle_views_userviewset_verify_seller"
+    ],
+    "5": [
+      "juggle_models_globalsettings",
+      "juggle_models_globalsettings_get_current_pool",
+      "juggle_models_globalsettings_get_settings",
+      "juggle_models_rationale_39",
+      "juggle_models_rationale_65",
+      "juggle_models_user_get_available_cb",
+      "juggle_models_user_get_calculated_cb",
+      "juggle_models_user_get_next_winning_phase_seconds",
+      "juggle_models_user_get_pyramid_info",
+      "juggle_models_user_get_pyramid_tiers",
+      "juggle_serializers_userserializer_get_pyramid_data",
+      "juggle_serializers_userserializer_get_seconds_until_next_change",
+      "juggle_views_juggleviewset_buy_item",
+      "juggle_views_productviewset_buy_direct",
+      "juggle_views_rationale_184",
+      "juggle_views_rationale_244",
+      "test_cb",
+      "test_cb_test_cb_logic",
+      "test_pyramid_api",
+      "test_pyramid_api_test_pyramid_logic",
+      "test_rotation",
+      "test_rotation_test_rotation"
+    ],
+    "6": [
+      "core_adapters",
+      "core_adapters_autoconnectsocialaccountadapter",
+      "core_adapters_autoconnectsocialaccountadapter_pre_social_login",
+      "core_adapters_myaccountadapter",
+      "core_adapters_myaccountadapter_is_safe_url",
+      "defaultaccountadapter",
+      "defaultsocialaccountadapter"
+    ],
+    "7": [
+      "manage",
+      "manage_main",
+      "manage_rationale_2",
+      "manage_rationale_8"
+    ],
+    "8": [
+      "core_asgi",
+      "core_asgi_rationale_1"
+    ],
+    "9": [
+      "core_settings",
+      "core_settings_rationale_1"
+    ],
+    "10": [
+      "core_urls",
+      "core_urls_rationale_1"
+    ],
+    "11": [
+      "core_wsgi",
+      "core_wsgi_rationale_1"
+    ],
+    "12": [
+      "frontend_test_signup",
+      "frontend_test_signup_puppeteer"
+    ],
+    "13": [
+      "juggle_migrations_0001_initial",
+      "juggle_migrations_0001_initial_migration"
+    ],
+    "14": [
+      "juggle_migrations_0002_remove_globalsettings_interval_duration_minutes_and_more",
+      "juggle_migrations_0002_remove_globalsettings_interval_duration_minutes_and_more_migration"
+    ],
+    "15": [
+      "juggle_migrations_0003_rename_interval_duration_seconds_globalsettings_interval_duration_minutes",
+      "juggle_migrations_0003_rename_interval_duration_seconds_globalsettings_interval_duration_minutes_migration"
+    ],
+    "16": [
+      "juggle_migrations_0004_product_stock_alter_jugglesession_product",
+      "juggle_migrations_0004_product_stock_alter_jugglesession_product_migration"
+    ],
+    "17": [
+      "juggle_migrations_0005_user_reserved_cb",
+      "juggle_migrations_0005_user_reserved_cb_migration"
+    ],
+    "18": [
+      "juggle_migrations_0006_product_brand",
+      "juggle_migrations_0006_product_brand_migration"
+    ],
+    "19": [
+      "juggle_migrations_0007_product_seller",
+      "juggle_migrations_0007_product_seller_migration"
+    ],
+    "20": [
+      "juggle_migrations_0008_product_allow_juggling",
+      "juggle_migrations_0008_product_allow_juggling_migration"
+    ],
+    "21": [
+      "juggle_migrations_0009_product_delivery_fee_product_delivery_type_and_more",
+      "juggle_migrations_0009_product_delivery_fee_product_delivery_type_and_more_migration"
+    ],
+    "22": [
+      "juggle_migrations_0010_user_is_juggler",
+      "juggle_migrations_0010_user_is_juggler_migration"
+    ],
+    "23": [
+      "juggle_migrations_0011_cartitem",
+      "juggle_migrations_0011_cartitem_migration"
+    ],
+    "24": [
+      "juggle_migrations_0012_globalsettings_site_fee_percentage_and_more",
+      "juggle_migrations_0012_globalsettings_site_fee_percentage_and_more_migration"
+    ],
+    "25": [
+      "juggle_migrations_0013_product_attributes_category_product_category_and_more",
+      "juggle_migrations_0013_product_attributes_category_product_category_and_more_migration"
+    ],
+    "26": [
+      "juggle_migrations_0014_product_is_limited_user_business_name_and_more",
+      "juggle_migrations_0014_product_is_limited_user_business_name_and_more_migration"
+    ],
+    "27": [
+      "juggle_migrations_0015_user_business_license_user_seller_phone",
+      "juggle_migrations_0015_user_business_license_user_seller_phone_migration"
+    ],
+    "28": [
+      "juggle_migrations_0016_user_seller_status",
+      "juggle_migrations_0016_user_seller_status_migration"
+    ],
+    "29": [
+      "juggle_migrations_0017_user_address_proof_user_bank_details_proof_and_more",
+      "juggle_migrations_0017_user_address_proof_user_bank_details_proof_and_more_migration"
+    ],
+    "30": [
+      "juggle_migrations_0018_user_deals_completed_user_pyramid_tier",
+      "juggle_migrations_0018_user_deals_completed_user_pyramid_tier_migration"
+    ],
+    "31": [
+      "test_market_api",
+      "test_market_api_test_buyer_market"
+    ],
+    "32": [
+      "core_init"
+    ],
+    "33": [
+      "juggle_migrations_init"
+    ]
+  },
+  "cohesion": {
+    "0": 0.1147086031452359,
+    "1": 0.13821138211382114,
+    "2": 0.09716599190283401,
+    "3": 0.05832147937411095,
+    "4": 0.12962962962962962,
+    "5": 0.13852813852813853,
+    "6": 0.2857142857142857,
+    "7": 0.5,
+    "8": 1.0,
+    "9": 1.0,
+    "10": 1.0,
+    "11": 1.0,
+    "12": 1.0,
+    "13": 1.0,
+    "14": 1.0,
+    "15": 1.0,
+    "16": 1.0,
+    "17": 1.0,
+    "18": 1.0,
+    "19": 1.0,
+    "20": 1.0,
+    "21": 1.0,
+    "22": 1.0,
+    "23": 1.0,
+    "24": 1.0,
+    "25": 1.0,
+    "26": 1.0,
+    "27": 1.0,
+    "28": 1.0,
+    "29": 1.0,
+    "30": 1.0,
+    "31": 1.0,
+    "32": 1.0,
+    "33": 1.0
+  },
+  "gods": [
+    {
+      "id": "juggle_models_user",
+      "label": "User",
+      "degree": 43
+    },
+    {
+      "id": "juggle_models_product",
+      "label": "Product",
+      "degree": 33
+    },
+    {
+      "id": "juggle_models_jugglesession",
+      "label": "JuggleSession",
+      "degree": 27
+    },
+    {
+      "id": "juggle_serializers_userserializer",
+      "label": "UserSerializer",
+      "degree": 24
+    },
+    {
+      "id": "juggle_models_category",
+      "label": "Category",
+      "degree": 19
+    },
+    {
+      "id": "juggle_models_globalsettings",
+      "label": "GlobalSettings",
+      "degree": 18
+    },
+    {
+      "id": "ref_react",
+      "label": "react",
+      "degree": 16
+    },
+    {
+      "id": "juggle_views_userviewset",
+      "label": "UserViewSet",
+      "degree": 15
+    },
+    {
+      "id": "juggle_serializers_productserializer",
+      "label": "ProductSerializer",
+      "degree": 14
+    },
+    {
+      "id": "juggle_views_productviewset",
+      "label": "ProductViewSet",
+      "degree": 14
+    }
+  ],
+  "surprises": [
+    {
+      "source": "seed_categories()",
+      "target": "Category",
+      "source_files": [
+        "seed_categories.py",
+        "juggle/models.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; peripheral node `seed_categories()` unexpectedly reaches hub `Category`"
+    },
+    {
+      "source": "test_cb_logic()",
+      "target": "User",
+      "source_files": [
+        "test_cb.py",
+        "juggle/models.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "test_pyramid_logic()",
+      "target": "User",
+      "source_files": [
+        "test_pyramid_api.py",
+        "juggle/models.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "test_rotation()",
+      "target": "User",
+      "source_files": [
+        "test_rotation.py",
+        "juggle/models.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "seed()",
+      "target": "GlobalSettings",
+      "source_files": [
+        "seed.py",
+        "juggle/models.py"
+      ],
+      "confidence": "INFERRED",
+      "relation": "uses",
+      "why": "inferred connection - not explicitly stated in source; connects across different repos/directories; bridges separate communities"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `User` connect `User` to `views.py`, `UserSerializer`, `GlobalSettings`?",
+      "why": "High betweenness centrality (0.059) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `Product` connect `User` to `views.py`, `UserSerializer`?",
+      "why": "High betweenness centrality (0.028) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `UserSerializer` connect `UserSerializer` to `User`, `views.py`, `GlobalSettings`?",
+      "why": "High betweenness centrality (0.026) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 17 inferred relationships involving `User` (e.g. with `check_market()` and `UserSerializer`) actually correct?",
+      "why": "`User` has 17 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 15 inferred relationships involving `Product` (e.g. with `BuyerMarketSerializer` and `ProductSerializer`) actually correct?",
+      "why": "`Product` has 15 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 12 inferred relationships involving `JuggleSession` (e.g. with `check_market()` and `JuggleSessionSerializer`) actually correct?",
+      "why": "`JuggleSession` has 12 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 5 inferred relationships involving `UserSerializer` (e.g. with `GlobalSettings` and `User`) actually correct?",
+      "why": "`UserSerializer` has 5 INFERRED edges - model-reasoned connections that need verification."
+    }
+  ]
+}
