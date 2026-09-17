@@ -5,8 +5,10 @@ import Navbar from './Navbar';
 import { 
   Package, PlusCircle, CheckCircle, XCircle, DollarSign, List, 
   BarChart2, Tag, Image, Truck, Zap, Smartphone, Laptop, 
-  Gamepad2, Armchair, Utensils, Footprints, Shirt, Watch, Leaf, ShieldCheck, AlertCircle, UploadCloud
+  Gamepad2, Armchair, Utensils, Footprints, Shirt, Watch, Leaf, ShieldCheck, AlertCircle, UploadCloud,
+  TrendingUp, ShoppingCart, BarChart as BarChartIcon
 } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
 function SellerDashboard() {
   const navigate = useNavigate();
@@ -14,6 +16,8 @@ function SellerDashboard() {
   const [myProducts, setMyProducts] = useState([]);
   const [stats, setStats] = useState({ revenue: 0, active: 0, sold: 0 });
   const [loadingProducts, setLoadingProducts] = useState(false);
+  const [analytics, setAnalytics] = useState(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   
   const [categories, setCategories] = useState([]);
   const [step, setStep] = useState(0);
@@ -113,10 +117,23 @@ function SellerDashboard() {
         setLoadingProducts(false);
       }
     };
+
+    const fetchAnalytics = async () => {
+      setLoadingAnalytics(true);
+      try {
+        const res = await api.get('/users/seller_analytics/');
+        setAnalytics(res.data);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingAnalytics(false);
+      }
+    };
   
     useEffect(() => {
       fetchCategories();
       fetchMyProducts();
+      fetchAnalytics();
       const fetchUser = async () => {
         try {
           const res = await api.get('/users/me/');
@@ -361,8 +378,9 @@ function SellerDashboard() {
         </header>
 
         {/* Tabs - Always show */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '3rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginBottom: '3rem', flexWrap: 'wrap' }}>
           <button onClick={() => setActiveTab('dashboard')} className={`btn ${activeTab === 'dashboard' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'dashboard' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'dashboard' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>Overview</button>
+          <button onClick={() => setActiveTab('analytics')} className={`btn ${activeTab === 'analytics' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'analytics' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'analytics' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>Analytics</button>
           <button onClick={() => setActiveTab('inventory')} className={`btn ${activeTab === 'inventory' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'inventory' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'inventory' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>My Inventory</button>
           <button onClick={() => setActiveTab('post')} className={`btn ${activeTab === 'post' ? 'btn-black' : ''}`} style={{ padding: '0.75rem 1.5rem', background: activeTab === 'post' ? 'var(--neon-green)' : 'transparent', color: activeTab === 'post' ? '#000' : 'inherit', border: '1px solid var(--neon-green)', fontWeight: 'bold' }}>Post Product</button>
         </div>
@@ -394,6 +412,130 @@ function SellerDashboard() {
                 <p className="text-muted">Units Sold</p>
                 <h2 style={{ fontSize: '2.5rem', color: 'var(--neon-purple)' }}>{stats.sold}</h2>
               </div>
+           </div>
+        )}
+
+        {activeTab === 'analytics' && (
+           <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+              {loadingAnalytics ? (
+                <div style={{ textAlign: 'center', padding: '3rem' }}>
+                  <p className="text-muted">Loading analytics...</p>
+                </div>
+              ) : analytics ? (
+                <>
+                  {/* Stats Cards */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+                    <div className="card" style={{ padding: '1.5rem', border: '1px solid var(--neon-green)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                        <TrendingUp size={20} color="var(--neon-green)" />
+                        <span style={{ fontSize: '0.8rem', color: 'var(--neon-green)', fontWeight: 'bold' }}>TOTAL REVENUE</span>
+                      </div>
+                      <h2 style={{ fontSize: '2rem', fontWeight: '900' }}>ETB {analytics.total_revenue.toFixed(2)}</h2>
+                    </div>
+                    <div className="card" style={{ padding: '1.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                        <ShoppingCart size={20} color="var(--neon-purple)" />
+                        <span style={{ fontSize: '0.8rem', color: 'var(--neon-purple)', fontWeight: 'bold' }}>TOTAL ORDERS</span>
+                      </div>
+                      <h2 style={{ fontSize: '2rem', fontWeight: '900' }}>{analytics.total_orders}</h2>
+                    </div>
+                    <div className="card" style={{ padding: '1.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                        <DollarSign size={20} color="var(--neon-green)" />
+                        <span style={{ fontSize: '0.8rem', color: 'var(--neon-green)', fontWeight: 'bold' }}>AVG ORDER VALUE</span>
+                      </div>
+                      <h2 style={{ fontSize: '2rem', fontWeight: '900' }}>ETB {analytics.avg_order_value.toFixed(2)}</h2>
+                    </div>
+                    <div className="card" style={{ padding: '1.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                        <Package size={20} color="var(--neon-purple)" />
+                        <span style={{ fontSize: '0.8rem', color: 'var(--neon-purple)', fontWeight: 'bold' }}>TOTAL PRODUCTS</span>
+                      </div>
+                      <h2 style={{ fontSize: '2rem', fontWeight: '900' }}>{analytics.total_products}</h2>
+                    </div>
+                  </div>
+
+                  {/* Charts */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem', marginBottom: '2rem' }}>
+                    {/* Revenue Chart */}
+                    <div className="card" style={{ padding: '1.5rem' }}>
+                      <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <BarChartIcon size={18} /> Revenue (Last 30 Days)
+                      </h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={analytics.daily_sales}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                          <XAxis dataKey="date" stroke="#888" fontSize={12} />
+                          <YAxis stroke="#888" fontSize={12} />
+                          <Tooltip contentStyle={{ background: '#111', border: '1px solid #333', borderRadius: '8px' }} />
+                          <Line type="monotone" dataKey="revenue" stroke="#22c55e" strokeWidth={2} dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {/* Orders Chart */}
+                    <div className="card" style={{ padding: '1.5rem' }}>
+                      <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <BarChartIcon size={18} /> Orders (Last 30 Days)
+                      </h3>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={analytics.daily_sales}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+                          <XAxis dataKey="date" stroke="#888" fontSize={12} />
+                          <YAxis stroke="#888" fontSize={12} />
+                          <Tooltip contentStyle={{ background: '#111', border: '1px solid #333', borderRadius: '8px' }} />
+                          <Bar dataKey="orders" fill="#a855f7" />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* Category Breakdown */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+                    <div className="card" style={{ padding: '1.5rem' }}>
+                      <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem' }}>Revenue by Category</h3>
+                      {analytics.category_breakdown.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={250}>
+                          <PieChart>
+                            <Pie
+                              data={analytics.category_breakdown}
+                              cx="50%"
+                              cy="50%"
+                              labelLine={false}
+                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                              outerRadius={100}
+                              dataKey="revenue"
+                            >
+                              {analytics.category_breakdown.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={['#22c55e', '#a855f7', '#f59e0b', '#ef4444'][index % 4]} />
+                              ))}
+                            </Pie>
+                            <Tooltip contentStyle={{ background: '#111', border: '1px solid #333', borderRadius: '8px' }} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <p className="text-muted" style={{ textAlign: 'center', padding: '2rem' }}>No data yet</p>
+                      )}
+                    </div>
+
+                    <div className="card" style={{ padding: '1.5rem' }}>
+                      <h3 style={{ fontSize: '1rem', marginBottom: '1.5rem' }}>Product Status</h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        {Object.entries(analytics.status_breakdown).map(([status, count]) => (
+                          <div key={status} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: 'rgba(0,0,0,0.02)', borderRadius: '0.5rem' }}>
+                            <span style={{ textTransform: 'capitalize', fontWeight: '600' }}>{status}</span>
+                            <span style={{ fontWeight: '900', fontSize: '1.2rem' }}>{count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '3rem' }}>
+                  <p className="text-muted">No analytics data available yet</p>
+                </div>
+              )}
            </div>
         )}
 

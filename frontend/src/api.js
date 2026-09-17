@@ -10,14 +10,22 @@ const api = axios.create({
   },
 });
 
+let isRedirecting = false;
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response) {
-      if (error.response.status === 401) {
-        window.location.href = '/signup';
-      } else if (error.response.status === 403) {
-        console.error('Permission denied:', error.response.data);
+    if (error.response && error.response.status === 401) {
+      const url = error.config?.url || '';
+      
+      if (url.includes('/users/me/') || url.includes('/cart/') || url.includes('/notifications/')) {
+        return Promise.reject(error);
+      }
+
+      if (!isRedirecting && !window.location.pathname.includes('/signup')) {
+        isRedirecting = true;
+        window.location.href = '/account';
+        setTimeout(() => { isRedirecting = false; }, 2000);
       }
     }
     return Promise.reject(error);

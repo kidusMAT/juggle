@@ -17,6 +17,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import SignupScreen from './src/screens/SignupScreen';
 import OrdersScreen from './src/screens/OrdersScreen';
 import TransactionsScreen from './src/screens/TransactionsScreen';
+import SellerUploadScreen from './src/screens/SellerUploadScreen';
 
 const AuthContext = createContext();
 
@@ -102,6 +103,7 @@ export default function App() {
               <Stack.Screen name="ProductDetail" component={ProductDetailScreen} options={{ title: 'Product' }} />
               <Stack.Screen name="Orders" component={OrdersScreen} options={{ title: 'My Orders' }} />
               <Stack.Screen name="Transactions" component={TransactionsScreen} options={{ title: 'Transactions' }} />
+              <Stack.Screen name="SellerUpload" component={SellerUploadScreen} options={{ title: 'List Product' }} />
             </>
           )}
         </Stack.Navigator>

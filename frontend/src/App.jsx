@@ -4,6 +4,9 @@ import JugglerDashboard from './components/JugglerDashboard';
 import BuyerMarketplace from './components/BuyerMarketplace';
 import ActiveJuggles from './components/ActiveJuggles';
 import BrandCollectionPage from './components/BrandCollectionPage';
+import Leaderboard from './components/Leaderboard';
+import ChatPage from './components/ChatPage';
+import DeliveryTrackingPage from './components/DeliveryTrackingPage';
 
 import SellerDashboard from './components/SellerDashboard';
 import AccountPage from './components/AccountPage';
@@ -23,6 +26,9 @@ function App() {
         <Route path="/brand/:brandName" element={<BrandCollectionPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/active-juggles" element={<ActiveJuggles />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/chat" element={<ChatPage />} />
+        <Route path="/track" element={<DeliveryTrackingPage />} />
 
         <Route path="/seller" element={<SellerDashboard />} />
         <Route path="/account" element={<AccountPage />} />

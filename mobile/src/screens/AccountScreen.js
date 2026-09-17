@@ -54,6 +54,7 @@ export default function AccountScreen({ navigation }) {
 
       {/* Menu Items */}
       <View style={styles.menu}>
+        <MenuItem icon="add-circle" label="List a Product" onPress={() => navigation.navigate('SellerUpload')} color="#7c3aed" />
         <MenuItem icon="receipt" label="My Orders" onPress={() => navigation.navigate('Orders')} />
         <MenuItem icon="wallet" label="Transactions" onPress={() => navigation.navigate('Transactions')} />
         <MenuItem icon="time" label="Active Juggles" onPress={() => {}} />

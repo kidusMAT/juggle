@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import User, Product, ProductImage, JuggleSession, GlobalSettings, CartItem, Category, ProductVariant, Transaction, Order, Review
+from .models import User, Product, ProductImage, JuggleSession, GlobalSettings, CartItem, Category, ProductVariant, Transaction, Order, Review, Conversation, Message, DeliveryTracking
 from django.utils import timezone
 from collections import namedtuple
 
@@ -224,3 +224,57 @@ class ReviewSerializer(serializers.ModelSerializer):
         model = Review
         fields = ['id', 'user', 'user_name', 'product', 'product_name', 'order', 'rating', 'comment', 'created_at']
         read_only_fields = ['user']
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.CharField(source='sender.username', read_only=True)
+
+    class Meta:
+        model = Message
+        fields = ['id', 'conversation', 'sender', 'sender_name', 'content', 'is_read', 'created_at']
+        read_only_fields = ['sender', 'is_read']
+
+
+class ConversationSerializer(serializers.ModelSerializer):
+    other_user = serializers.SerializerMethodField()
+    last_message = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
+    product_name = serializers.CharField(source='product.name', read_only=True, default=None)
+
+    class Meta:
+        model = Conversation
+        fields = ['id', 'participants', 'other_user', 'last_message', 'unread_count', 'product', 'product_name', 'created_at', 'updated_at']
+        read_only_fields = ['participants']
+
+    def get_other_user(self, obj):
+        request = self.context.get('request')
+        if request and request.user:
+            other = obj.get_other_participant(request.user)
+            if other:
+                return {'id': other.id, 'username': other.username}
+        return None
+
+    def get_last_message(self, obj):
+        msg = obj.last_message
+        if msg:
+            return {
+                'content': msg.content,
+                'sender_name': msg.sender.username,
+                'created_at': msg.created_at.isoformat()
+            }
+        return None
+
+    def get_unread_count(self, obj):
+        request = self.context.get('request')
+        if request and request.user:
+            return obj.messages.filter(is_read=False).exclude(sender=request.user).count()
+        return 0
+
+
+class DeliveryTrackingSerializer(serializers.ModelSerializer):
+    updated_by_name = serializers.CharField(source='updated_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = DeliveryTracking
+        fields = ['id', 'order', 'status', 'location', 'description', 'updated_by', 'updated_by_name', 'created_at']
+        read_only_fields = ['updated_by']

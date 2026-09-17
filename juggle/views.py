@@ -2,20 +2,37 @@ from rest_framework import viewsets, status, pagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
-from .models import Product, JuggleSession, GlobalSettings, User, CartItem, Category, ProductVariant, Pyramid, Notification, Transaction, Order, Review
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle, ScopedRateThrottle
+from .models import Product, JuggleSession, GlobalSettings, User, CartItem, Category, ProductVariant, Pyramid, Notification, Transaction, Order, Review, Conversation, Message, DeliveryTracking
 from .serializers import (
     ProductSerializer, JuggleSessionSerializer, UserSerializer,
     BuyerMarketSerializer, CartItemSerializer, CategorySerializer, NotificationSerializer,
-    TransactionSerializer, OrderSerializer, ReviewSerializer
+    TransactionSerializer, OrderSerializer, ReviewSerializer, ConversationSerializer, MessageSerializer, DeliveryTrackingSerializer
 )
 from django.utils import timezone
-from django.db.models import Q, F, Avg
+from django.db.models import Q, F, Avg, Sum, Count
 from django.db import transaction
 from django.contrib.auth import authenticate, login, logout
+from django.core.cache import cache
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 import datetime
 import decimal
 from decimal import Decimal
+
+
+def get_badge(rank):
+    if rank == 1:
+        return {'name': 'Gold', 'emoji': '🏆', 'color': '#FFD700'}
+    elif rank == 2:
+        return {'name': 'Silver', 'emoji': '🥈', 'color': '#C0C0C0'}
+    elif rank == 3:
+        return {'name': 'Bronze', 'emoji': '🥉', 'color': '#CD7F32'}
+    elif rank <= 10:
+        return {'name': 'Elite', 'emoji': '⭐', 'color': '#22c55e'}
+    elif rank <= 25:
+        return {'name': 'Pro', 'emoji': '🔥', 'color': '#a855f7'}
+    else:
+        return {'name': 'Rising', 'emoji': '📈', 'color': '#888'}
 
 
 class UnsafeSessionAuthentication(SessionAuthentication):
@@ -81,13 +98,14 @@ class ProductViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
 
     def get_queryset(self):
         queryset = Product.objects.all().order_by('-id')
         category = self.request.query_params.get('category')
         if category:
             queryset = queryset.filter(category=category)
-        return queryset
+        return queryset.select_related('seller', 'category').prefetch_related('images', 'variants')
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -128,9 +146,41 @@ class ProductViewSet(viewsets.ModelViewSet):
     def buyer_market(self, request):
         cleanup_expired_juggles()
 
+        search = request.query_params.get('search', '').strip()
+        category = request.query_params.get('category', '').strip()
+        min_price = request.query_params.get('min_price', '').strip()
+        max_price = request.query_params.get('max_price', '').strip()
+
         products = Product.objects.filter(
             Q(status='JUGGLED') | Q(status='AVAILABLE', allow_juggling=False)
         ).prefetch_related('active_sessions__user').order_by('-id')
+
+        if search:
+            search_terms = search.split()
+            query = Q()
+            for term in search_terms:
+                query |= (
+                    Q(name__icontains=term) |
+                    Q(brand__icontains=term) |
+                    Q(description__icontains=term) |
+                    Q(category__name__icontains=term)
+                )
+            products = products.filter(query)
+
+        if category and category != 'All':
+            products = products.filter(category__name__icontains=category)
+
+        if min_price:
+            try:
+                products = products.filter(base_price__gte=float(min_price))
+            except ValueError:
+                pass
+
+        if max_price:
+            try:
+                products = products.filter(base_price__lte=float(max_price))
+            except ValueError:
+                pass
 
         deals = []
         for product in products:
@@ -184,6 +234,69 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         serializer = DealSerializer(deals, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='fuzzy_search')
+    def fuzzy_search(self, request):
+        query = request.query_params.get('q', '').strip()
+        if not query:
+            return Response({'results': []})
+
+        def levenshtein(s1, s2):
+            if len(s1) < len(s2):
+                return levenshtein(s2, s1)
+            if len(s2) == 0:
+                return len(s1)
+            prev_row = range(len(s2) + 1)
+            for i, c1 in enumerate(s1):
+                curr_row = [i + 1]
+                for j, c2 in enumerate(s2):
+                    insertions = prev_row[j + 1] + 1
+                    deletions = curr_row[j] + 1
+                    substitutions = prev_row[j] + (c1 != c2)
+                    curr_row.append(min(insertions, deletions, substitutions))
+                prev_row = curr_row
+            return prev_row[-1]
+
+        products = Product.objects.filter(
+            Q(status='JUGGLED') | Q(status='AVAILABLE', allow_juggling=False)
+        )[:200]
+
+        scored = []
+        query_lower = query.lower()
+        for product in products:
+            name_lower = product.name.lower()
+            brand_lower = (product.brand or '').lower()
+            desc_lower = (product.description or '').lower()
+
+            score = 0
+            if query_lower in name_lower:
+                score += 100
+            if query_lower in brand_lower:
+                score += 80
+            if query_lower in desc_lower:
+                score += 40
+
+            if score == 0:
+                for word in query_lower.split():
+                    if word in name_lower:
+                        score += 30
+                    elif word in brand_lower:
+                        score += 20
+
+                    name_dist = levenshtein(word, name_lower[:len(word)])
+                    if name_dist <= 2:
+                        score += 50 - (name_dist * 10)
+
+            if score > 0:
+                scored.append((score, product))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        results = [s[1] for s in scored[:20]]
+
+        from .serializers import ProductSerializer
+        return Response({
+            'results': ProductSerializer(results, many=True).data
+        })
 
     @action(detail=True, methods=['post'])
     def buy_direct(self, request, pk=None):
@@ -478,6 +591,7 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    throttle_classes = [UserRateThrottle]
 
     def get_queryset(self):
         if self.request.user.is_staff:
@@ -578,6 +692,120 @@ class UserViewSet(viewsets.ModelViewSet):
         pending = User.objects.filter(seller_status='PENDING')
         serializer = UserSerializer(pending, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='seller_analytics')
+    def seller_analytics(self, request):
+        user = request.user
+        if user.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        from django.db.models import Sum, Count, Q
+        from django.utils import timezone
+        import datetime
+
+        products = Product.objects.filter(seller=user)
+        transactions = Transaction.objects.filter(
+            Q(order__product__seller=user) | Q(juggle__seller=user)
+        )
+
+        total_revenue = transactions.filter(
+            type='PURCHASE'
+        ).aggregate(total=Sum('amount'))['total'] or 0
+
+        today = timezone.now().date()
+        daily_sales = []
+        for i in range(30):
+            day = today - datetime.timedelta(days=i)
+            day_start = timezone.make_aware(datetime.datetime.combine(day, datetime.time.min))
+            day_end = timezone.make_aware(datetime.datetime.combine(day, datetime.time.max))
+            day_revenue = transactions.filter(
+                type='PURCHASE',
+                created_at__range=(day_start, day_end)
+            ).aggregate(total=Sum('amount'))['total'] or 0
+            day_count = transactions.filter(
+                type='PURCHASE',
+                created_at__range=(day_start, day_end)
+            ).count()
+            daily_sales.append({
+                'date': day.strftime('%b %d'),
+                'revenue': float(day_revenue),
+                'orders': day_count
+            })
+        daily_sales.reverse()
+
+        category_breakdown = products.values('category__name').annotate(
+            count=Count('id'),
+            revenue=Sum('base_price')
+        ).order_by('-revenue')
+
+        status_breakdown = {
+            'available': products.filter(status='AVAILABLE').count(),
+            'juggled': products.filter(status='JUGGLED').count(),
+            'sold': products.filter(status='SOLD').count(),
+            'expired': products.filter(status='EXPIRED').count(),
+        }
+
+        avg_order_value = transactions.filter(type='PURCHASE').aggregate(
+            avg=Sum('amount') / Count('id')
+        )['avg'] or 0
+
+        return Response({
+            'total_revenue': float(total_revenue),
+            'total_products': products.count(),
+            'total_orders': transactions.filter(type='PURCHASE').count(),
+            'avg_order_value': float(avg_order_value),
+            'daily_sales': daily_sales,
+            'category_breakdown': [
+                {'name': c['category__name'] or 'Uncategorized', 'count': c['count'], 'revenue': float(c['revenue'] or 0)}
+                for c in category_breakdown
+            ],
+            'status_breakdown': status_breakdown
+        })
+
+    @action(detail=False, methods=['get'], url_path='leaderboard')
+    def leaderboard(self, request):
+        cache_key = 'juggler_leaderboard'
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
+
+        jugglers = User.objects.filter(is_juggler=True).order_by('-deals_completed')[:50]
+
+        leaderboard_data = []
+        for rank, juggler in enumerate(jugglers, 1):
+            cb_power = juggler.get_calculated_cb()
+            earnings = Transaction.objects.filter(
+                type='JUGGLE_PROFIT',
+                juggle__seller=juggler
+            ).aggregate(total=Sum('amount'))['total'] or 0
+
+            success_rate = 100
+            if juggler.deals_completed > 0:
+                successful = JuggleSession.objects.filter(
+                    user=juggler, is_active=False
+                ).count()
+                success_rate = min(100, int((successful / max(juggler.deals_completed, 1)) * 100))
+
+            leaderboard_data.append({
+                'rank': rank,
+                'id': juggler.id,
+                'username': juggler.username,
+                'business_name': juggler.business_name or juggler.username,
+                'deals_completed': juggler.deals_completed,
+                'pyramid_tier': juggler.pyramid_tier,
+                'cb_power': float(cb_power),
+                'actual_balance': float(juggler.actual_balance),
+                'earnings': float(earnings),
+                'success_rate': success_rate,
+                'badge': get_badge(rank)
+            })
+
+        response_data = {
+            'leaderboard': leaderboard_data,
+            'total_jugglers': User.objects.filter(is_juggler=True).count()
+        }
+        cache.set(cache_key, response_data, 300)
+        return Response(response_data)
 
     @action(detail=True, methods=['post'])
     def review_seller(self, request, pk=None):
@@ -1207,3 +1435,181 @@ class ReviewViewSet(viewsets.ModelViewSet):
             'average_rating': round(avg_rating, 1),
             'total_reviews': reviews.count()
         })
+
+
+class ConversationViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ConversationSerializer
+
+    def get_queryset(self):
+        return Conversation.objects.filter(participants=self.request.user)
+
+    def create(self, request):
+        user = request.user
+        other_user_id = request.data.get('user_id')
+        product_id = request.data.get('product_id')
+
+        if not other_user_id:
+            return Response({'error': 'user_id required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            other_user = User.objects.get(id=other_user_id)
+        except User.DoesNotExist:
+            return Response({'error': 'User not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        existing = Conversation.objects.filter(participants=user).filter(participants=other_user)
+        if product_id:
+            existing = existing.filter(product_id=product_id)
+        existing = existing.first()
+
+        if existing:
+            return Response(ConversationSerializer(existing, context={'request': request}).data)
+
+        conversation = Conversation.objects.create(product_id=product_id)
+        conversation.participants.add(user, other_user)
+        return Response(ConversationSerializer(conversation, context={'request': request}).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def messages(self, request, pk=None):
+        conversation = self.get_object()
+        messages = conversation.messages.all()
+
+        messages.filter(is_read=False).exclude(sender=request.user).update(is_read=True)
+
+        return Response(MessageSerializer(messages, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def send_message(self, request, pk=None):
+        conversation = self.get_object()
+        content = request.data.get('content', '').strip()
+
+        if not content:
+            return Response({'error': 'Message content required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        message = Message.objects.create(
+            conversation=conversation,
+            sender=request.user,
+            content=content
+        )
+
+        conversation.save()
+
+        return Response(MessageSerializer(message).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'])
+    def unread_count(self, request):
+        total = Message.objects.filter(
+            conversation__participants=request.user,
+            is_read=False
+        ).exclude(sender=request.user).count()
+
+        return Response({'unread_count': total})
+
+
+class MessageViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = MessageSerializer
+
+    def get_queryset(self):
+        conversation_id = self.request.query_params.get('conversation')
+        if conversation_id:
+            return Message.objects.filter(conversation_id=conversation_id)
+        return Message.objects.filter(conversation__participants=self.request.user)
+
+
+class DeliveryTrackingViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = DeliveryTrackingSerializer
+
+    def get_queryset(self):
+        user = self.request.user
+        order_id = self.request.query_params.get('order')
+        if order_id:
+            return DeliveryTracking.objects.filter(order_id=order_id).order_by('-created_at')
+        return DeliveryTracking.objects.filter(
+            Q(order__buyer=user) | Q(order__seller=user) | Q(updated_by=user)
+        ).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        order_id = self.request.data.get('order')
+        try:
+            order = Order.objects.get(id=order_id)
+        except Order.DoesNotExist:
+            from rest_framework.exceptions import NotFound
+            raise NotFound("Order not found")
+
+        tracking = serializer.save(updated_by=self.request.user)
+
+        status_map = {
+            'PICKED_UP': 'SHIPPED',
+            'IN_TRANSIT': 'SHIPPED',
+            'OUT_FOR_DELIVERY': 'SHIPPED',
+            'DELIVERED': 'DELIVERED',
+            'FAILED': 'CANCELLED',
+        }
+        order_status = status_map.get(tracking.status)
+        if order_status:
+            order.status = order_status
+            if tracking.status == 'DELIVERED':
+                order.delivered_at = timezone.now()
+            order.save(update_fields=['status', 'updated_at'])
+
+    @action(detail=False, methods=['get'])
+    def by_tracking_number(self, request):
+        tracking_number = request.query_params.get('tracking_number')
+        if not tracking_number:
+            return Response({'error': 'tracking_number required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            order = Order.objects.get(tracking_number=tracking_number)
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        updates = DeliveryTracking.objects.filter(order=order).order_by('-created_at')
+        return Response({
+            'order': OrderSerializer(order).data,
+            'tracking_updates': DeliveryTrackingSerializer(updates, many=True).data
+        })
+
+    @action(detail=False, methods=['post'])
+    def add_update(self, request):
+        user = request.user
+        order_id = request.data.get('order')
+        tracking_status = request.data.get('status')
+        location = request.data.get('location', '')
+        description = request.data.get('description', '')
+
+        if not order_id or not tracking_status:
+            return Response({'error': 'order and status required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            order = Order.objects.get(id=order_id)
+        except Order.DoesNotExist:
+            return Response({'error': 'Order not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not (order.seller == user or order.buyer == user or user.is_staff):
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
+
+        tracking = DeliveryTracking.objects.create(
+            order=order,
+            status=tracking_status,
+            location=location,
+            description=description,
+            updated_by=user
+        )
+
+        status_map = {
+            'PICKED_UP': 'SHIPPED',
+            'IN_TRANSIT': 'SHIPPED',
+            'OUT_FOR_DELIVERY': 'SHIPPED',
+            'DELIVERED': 'DELIVERED',
+            'FAILED': 'CANCELLED',
+        }
+        order_status = status_map.get(tracking_status)
+        if order_status:
+            order.status = order_status
+            if tracking_status == 'DELIVERED':
+                order.delivered_at = timezone.now()
+            order.save(update_fields=['status', 'updated_at'])
+
+        return Response(DeliveryTrackingSerializer(tracking).data, status=status.HTTP_201_CREATED)

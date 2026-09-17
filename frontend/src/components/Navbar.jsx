@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, User, ShoppingBag, Package, X, Zap, LogOut, Shield, AlertCircle, CheckCircle, Bell } from 'lucide-react';
+import { Search, SlidersHorizontal, User, ShoppingBag, Package, X, Zap, LogOut, Shield, AlertCircle, CheckCircle, Bell, Award, MessageCircle } from 'lucide-react';
 import api, { API_BASE } from '../api';
 
 const COLORS = [
@@ -289,6 +289,12 @@ function Navbar({
             <button className="btn-black" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }} onClick={handleJuggleClick}>
               JUGGLE
             </button>
+            <Link to="/leaderboard" style={{ color: 'inherit' }}>
+              <Award size={22} style={{ cursor: 'pointer' }} title="Leaderboard" />
+            </Link>
+            <Link to="/chat" style={{ color: 'inherit' }}>
+              <MessageCircle size={22} style={{ cursor: 'pointer' }} title="Messages" />
+            </Link>
             <Link to="/seller" style={{ color: 'inherit' }}>
               <Package size={22} style={{ cursor: 'pointer' }} title="Seller Dashboard" />
             </Link>
