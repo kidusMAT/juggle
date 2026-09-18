@@ -37,7 +37,7 @@ def get_badge(rank):
 
 class UnsafeSessionAuthentication(SessionAuthentication):
     def enforce_csrf(self, request):
-        return
+        return request.user
 
 
 class StandardResultsSetPagination(pagination.PageNumberPagination):
@@ -591,7 +591,6 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = User.objects.all()
     serializer_class = UserSerializer
-    throttle_classes = [UserRateThrottle]
 
     def get_queryset(self):
         if self.request.user.is_staff:
