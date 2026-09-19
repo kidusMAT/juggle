@@ -15,14 +15,14 @@ let isRedirecting = false;
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
       const url = error.config?.url || '';
       
       if (url.includes('/users/me/') || url.includes('/cart/') || url.includes('/notifications/')) {
         return Promise.reject(error);
       }
 
-      if (!isRedirecting && !window.location.pathname.includes('/signup')) {
+      if (error.response.status === 401 && !isRedirecting && !window.location.pathname.includes('/signup')) {
         isRedirecting = true;
         window.location.href = '/account';
         setTimeout(() => { isRedirecting = false; }, 2000);

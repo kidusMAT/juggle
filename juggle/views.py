@@ -592,6 +592,11 @@ class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
 
+    def get_permissions(self):
+        if self.action in ['me', 'leaderboard', 'login_user', 'signup_user', 'logout_user', 'forgot_password']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
+
     def get_queryset(self):
         if self.request.user.is_staff:
             return User.objects.all()
@@ -600,8 +605,17 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def me(self, request):
         cleanup_expired_juggles()
+        settings = GlobalSettings.get_settings()
+        now = timezone.now()
+        elapsed = (now - settings.last_reset_time).total_seconds()
+        PHASE_DURATION = 300.0
+        seconds_until_next_change = int(PHASE_DURATION - (elapsed % PHASE_DURATION))
+
         if request.user.is_anonymous:
-            return Response({"error": "Not authenticated"}, status=status.HTTP_401_UNAUTHORIZED)
+            return Response({
+                "error": "Not authenticated",
+                "seconds_until_next_change": seconds_until_next_change
+            }, status=status.HTTP_401_UNAUTHORIZED)
 
         user = request.user
         serializer = self.get_serializer(user)
@@ -1118,8 +1132,9 @@ class AdminDashboardViewSet(viewsets.ViewSet):
 
 class CartViewSet(viewsets.ModelViewSet):
     authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = CartItemSerializer
+    pagination_class = None
 
     def get_queryset(self):
         if self.request.user.is_anonymous:
@@ -1128,6 +1143,8 @@ class CartViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def update_quantity(self, request, pk=None):
+        if request.user.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
         cart_item = self.get_object()
 
         try:
@@ -1322,9 +1339,15 @@ class CartViewSet(viewsets.ModelViewSet):
 
 
 class NotificationViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    permission_classes = [AllowAny]
 
     def list(self, request):
+        if request.user.is_anonymous:
+            return Response({
+                'notifications': [],
+                'unread_count': 0
+            })
         notifications = Notification.objects.filter(user=request.user)[:50]
         serializer = NotificationSerializer(notifications, many=True)
         unread_count = Notification.objects.filter(user=request.user, is_read=False).count()
@@ -1335,6 +1358,8 @@ class NotificationViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def mark_read(self, request):
+        if request.user.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
         notification_id = request.data.get('id')
         if notification_id:
             Notification.objects.filter(id=notification_id, user=request.user).update(is_read=True)
@@ -1342,11 +1367,15 @@ class NotificationViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['post'])
     def mark_all_read(self, request):
+        if request.user.is_anonymous:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
         Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
         return Response({'success': True})
 
     @action(detail=False, methods=['get'])
     def unread_count(self, request):
+        if request.user.is_anonymous:
+            return Response({'unread_count': 0})
         count = Notification.objects.filter(user=request.user, is_read=False).count()
         return Response({'unread_count': count})
 

@@ -44,22 +44,27 @@ function Navbar({
   const fetchCartCount = async () => {
     try {
       const res = await api.get('/cart/');
-      setCartCount(res.data.length);
+      const items = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setCartCount(items.length);
     } catch (err) {
-      console.error("Error fetching cart count", err);
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        console.error("Error fetching cart count", err);
+      }
     }
   };
 
   const fetchUser = async () => {
     try {
       const res = await api.get('/users/me/');
-      if (res.status === 200) {
+      if (res.status === 200 && res.data?.id) {
         setUserData(res.data);
       } else {
         setUserData(null);
       }
     } catch (err) {
-      console.error("Error fetching user", err);
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        console.error("Error fetching user", err);
+      }
       setUserData(null);
     }
   };
@@ -67,8 +72,8 @@ function Navbar({
   const fetchNotifications = async () => {
     try {
       const res = await api.get('/notifications/');
-      const newNotifications = res.data.notifications || [];
-      const newUnreadCount = res.data.unread_count || 0;
+      const newNotifications = res.data?.notifications || [];
+      const newUnreadCount = res.data?.unread_count || 0;
       
       // Check for new notifications and show browser push
       if (unreadCount > 0 && newUnreadCount > unreadCount) {
@@ -84,7 +89,9 @@ function Navbar({
       setNotifications(newNotifications);
       setUnreadCount(newUnreadCount);
     } catch (err) {
-      console.error("Error fetching notifications", err);
+      if (err.response?.status !== 401 && err.response?.status !== 403) {
+        console.error("Error fetching notifications", err);
+      }
     }
   };
 
