@@ -139,6 +139,20 @@ class AuthenticationTests(APITestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.actual_balance, Decimal('1025.00'))
 
+    def test_development_deposit_does_not_require_email(self):
+        self.user.email = ''
+        self.user.save(update_fields=['email'])
+        from django.test import override_settings
+        with override_settings(PAYMENT_MODE='mock'):
+            self.client.login(username='testuser', password='testpass123')
+            response = self.client.post(
+                '/api/users/deposit/',
+                {'amount': '10.00'},
+                content_type='application/json'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['mock'])
+
 
 class ProductTests(APITestCase):
     def test_list_products(self):

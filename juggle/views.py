@@ -887,7 +887,7 @@ class UserViewSet(viewsets.ModelViewSet):
         if user.is_juggler:
             return Response({"error": "You are already a juggler"}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not user.email:
+        if settings.PAYMENT_MODE != 'mock' and not user.email:
             return Response({"error": "Email is required for payment. Please update your email first."}, status=status.HTTP_400_BAD_REQUEST)
 
         if settings.PAYMENT_MODE == 'mock':
@@ -932,7 +932,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
         user = request.user
 
-        if not user.email:
+        if settings.PAYMENT_MODE != 'mock' and not user.email:
             return Response({"error": "Email is required for payment. Please update your email first."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
