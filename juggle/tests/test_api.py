@@ -38,7 +38,7 @@ class APITestCase(TestCase):
 class AuthenticationTests(APITestCase):
     def test_signup(self):
         response = self.client.post(
-            '/api/users/',
+            '/api/users/signup_user/',
             {
                 'username': 'newuser',
                 'email': 'new@example.com',
@@ -46,7 +46,7 @@ class AuthenticationTests(APITestCase):
             },
             content_type='application/json'
         )
-        self.assertIn(response.status_code, [200, 201, 400])
+        self.assertIn(response.status_code, [200, 201])
 
     def test_login(self):
         response = self.client.post(

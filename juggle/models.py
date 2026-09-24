@@ -42,6 +42,10 @@ class User(AbstractUser):
 
     def save(self, *args, **kwargs):
         self.pyramid_tier = 100
+        if self.actual_balance > BALANCE_CAP:
+            overflow = self.actual_balance - BALANCE_CAP
+            self.pending_balance += overflow
+            self.actual_balance = BALANCE_CAP
         super().save(*args, **kwargs)
 
     def get_pyramid_info(self):
@@ -87,9 +91,9 @@ class User(AbstractUser):
             survivor_count, value = TIERS[current_phase]
             if user_rank < survivor_count:
                 if current_phase == 7:
-                    return float(value) * active_pyramids
-                return float(value)
-        return 0.0
+                    return Decimal(str(value)) * active_pyramids
+                return Decimal(str(value))
+        return Decimal('0')
 
     def get_available_cb(self):
         calculated = self.get_calculated_cb()
@@ -98,7 +102,7 @@ class User(AbstractUser):
             expires_at__gt=timezone.now()
         ).aggregate(total=models.Sum('product__base_price'))['total'] or 0
 
-        return float(max(Decimal('0'), Decimal(str(calculated)) - current_reservation))
+        return max(Decimal('0'), calculated - current_reservation)
 
     def get_next_winning_phase_seconds(self):
         info = self.get_pyramid_info()
@@ -195,6 +199,7 @@ class Product(models.Model):
     is_limited = models.BooleanField(default=False)
     stock = models.IntegerField(default=1)
     seller = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='products_sold')
+    created_at = models.DateTimeField(default=timezone.now)
 
     def __str__(self):
         return self.name

@@ -2,6 +2,7 @@ from rest_framework import viewsets, status, pagination
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.throttling import AnonRateThrottle, UserRateThrottle, ScopedRateThrottle
 from .models import Product, JuggleSession, GlobalSettings, User, CartItem, Category, ProductVariant, Pyramid, Notification, Transaction, Order, Review, Conversation, Message, DeliveryTracking
 from .serializers import (
@@ -37,7 +38,7 @@ def get_badge(rank):
 
 class UnsafeSessionAuthentication(SessionAuthentication):
     def enforce_csrf(self, request):
-        return request.user
+        return request._request.user
 
 
 class StandardResultsSetPagination(pagination.PageNumberPagination):
@@ -1141,6 +1142,11 @@ class CartViewSet(viewsets.ModelViewSet):
             return CartItem.objects.none()
         return CartItem.objects.filter(user=self.request.user)
 
+    def perform_create(self, serializer):
+        if self.request.user.is_anonymous:
+            raise PermissionDenied("Authentication required")
+        serializer.save(user=self.request.user)
+
     @action(detail=True, methods=['post'])
     def update_quantity(self, request, pk=None):
         if request.user.is_anonymous:
@@ -1454,10 +1460,10 @@ class ReviewViewSet(viewsets.ModelViewSet):
         product_id = request.query_params.get('product')
         if not product_id:
             return Response({'error': 'Product ID required'}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         reviews = Review.objects.filter(product_id=product_id)
-        avg_rating = reviews.aggregate(models.Avg('rating'))['rating__avg'] or 0
-        
+        avg_rating = reviews.aggregate(Avg('rating'))['rating__avg'] or 0
+
         return Response({
             'reviews': ReviewSerializer(reviews, many=True).data,
             'average_rating': round(avg_rating, 1),

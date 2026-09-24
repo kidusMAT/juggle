@@ -34,7 +34,21 @@ class UserModelTest(TestCase):
 
     def test_get_pyramid_tiers(self):
         tiers = self.user.get_pyramid_tiers()
-        self.assertEqual(tiers, [100, 50, 25, 12, 8, 4, 2, 1])
+        # get_pyramid_tiers returns list of (survivor_count, value_per_survivor) tuples
+        self.assertEqual(len(tiers), 8)
+        self.assertEqual(tiers[0][0], 100)  # BASE tier survivors
+        self.assertEqual(tiers[1][0], 50)   # JUNIOR tier survivors
+        self.assertEqual(tiers[2][0], 25)   # SENIOR tier survivors
+        self.assertEqual(tiers[3][0], 12)   # TEAM LEAD tier survivors
+        self.assertEqual(tiers[4][0], 8)    # SUPERVISOR tier survivors
+        self.assertEqual(tiers[5][0], 4)    # MANAGER tier survivors
+        self.assertEqual(tiers[6][0], 2)    # DIRECTOR tier survivors
+        self.assertEqual(tiers[7][0], 1)    # EXECUTIVE tier survivors
+        # Verify values are calculated correctly (pool / survivors)
+        pool = 10000.0
+        for survivor_count, value in tiers:
+            expected_value = pool / survivor_count
+            self.assertAlmostEqual(value, expected_value, places=2)
 
 
 class ProductModelTest(TestCase):
