@@ -120,15 +120,16 @@ function BuyerMarketplace() {
     if (isLoadMore) setLoadingMore(true);
     try {
       const res = await api.get(url);
-      const { results, next } = res.data;
+      const items = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      const nextUrl = res.data?.next || null;
       
-      if (results && results.length > 0) {
+      if (items && items.length > 0) {
         if (isLoadMore) {
-          setDeals(prev => [...prev, ...results]);
+          setDeals(prev => [...prev, ...items]);
         } else {
-          setDeals(results);
+          setDeals(items);
         }
-        setNextPage(next);
+        setNextPage(nextUrl);
       } else if (!isLoadMore) {
         setDeals([]);
       }
@@ -300,37 +301,36 @@ function BuyerMarketplace() {
   const filteredDeals = React.useMemo(() => {
     return deals
       .filter(deal => {
+        if (!deal || !deal.product) return false;
         const p = deal.product;
-        const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                               (p.brand || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                               (p.description && p.description.toLowerCase().includes(searchTerm.toLowerCase()));
         const matchesCategory = selectedCategory === 'All' || p.category_name === selectedCategory;
         const matchesBrand = selectedBrand === 'All' || (p.brand || '').toLowerCase() === selectedBrand.toLowerCase();
-        const price = parseFloat(deal.markup_price);
+        const price = parseFloat(deal.markup_price || 0);
         const matchesPrice = price >= priceRange[0] && price <= priceRange[1];
         const matchesJuggle = !juggleOnly || !deal.is_direct;
         return matchesSearch && matchesCategory && matchesBrand && matchesPrice && matchesJuggle;
       })
       .sort((a, b) => {
-        if (sortOrder === 'price-low') return parseFloat(a.markup_price) - parseFloat(b.markup_price);
-        if (sortOrder === 'price-high') return parseFloat(b.markup_price) - parseFloat(a.markup_price);
-        return b.id - a.id;
+        if (sortOrder === 'price-low') return parseFloat(a.markup_price || 0) - parseFloat(b.markup_price || 0);
+        if (sortOrder === 'price-high') return parseFloat(b.markup_price || 0) - parseFloat(a.markup_price || 0);
+        return (b.id || 0) - (a.id || 0);
       });
   }, [deals, searchTerm, selectedCategory, selectedBrand, priceRange, juggleOnly, sortOrder]);
 
   const categoryNames = ['All', ...new Set(allCategories.map(c => c.parent ? null : c.name).filter(n => n))];
 
   // SPLIT DEALS INTO SECTIONS
-  const liveJuggles = filteredDeals.filter(d => !d.is_direct);
-  const directDeals = filteredDeals.filter(d => d.is_direct);
+  const liveJuggles = filteredDeals.filter(d => d && !d.is_direct);
+  const directDeals = filteredDeals.filter(d => d && d.is_direct);
   
   const urgentJuggles = liveJuggles.filter(d => {
-      if (d.expires_at) {
+      if (d && d.expires_at) {
           const expiry = new Date(d.expires_at).getTime();
           const productSecondsLeft = Math.max(0, Math.ceil((expiry - now) / 1000));
           
-          // An item is urgent if its OWN timer is < 120s 
-          // OR if it's a persistent item and the GLOBAL phase is < 120s
           return productSecondsLeft < 120 || (productSecondsLeft > 10000 && phaseTimeLeft < 120);
       }
       return false;
@@ -340,13 +340,14 @@ function BuyerMarketplace() {
 
   // Determine Hero Deal (Highly urgent OR most expensive)
   let heroDeal = null;
-  if (urgentJuggles.length > 0) heroDeal = urgentJuggles[0];
-  else if (trendingJuggles.length > 0) heroDeal = trendingJuggles[0];
-  else if (directDeals.length > 0) heroDeal = directDeals[0];
+  if (urgentJuggles.length > 0 && urgentJuggles[0]?.product) heroDeal = urgentJuggles[0];
+  else if (trendingJuggles.length > 0 && trendingJuggles[0]?.product) heroDeal = trendingJuggles[0];
+  else if (directDeals.length > 0 && directDeals[0]?.product) heroDeal = directDeals[0];
 
 
   // REUSABLE PRODUCT CARD RENDERER
   const renderProductCard = (deal, idx, isHorizontal = false) => {
+    if (!deal || !deal.product) return null;
     const product = deal.product;
     const bgColor = placeholderColors[idx % placeholderColors.length];
     const isDark = bgColor === '#1f2937';
