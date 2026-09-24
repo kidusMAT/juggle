@@ -153,6 +153,22 @@ class AuthenticationTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data['mock'])
 
+    def test_deposit_accepts_127_frontend_origin_with_csrf(self):
+        from django.test import override_settings
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.login(username='testuser', password='testpass123')
+        csrf_client.get('/api/csrf/')
+        csrf_token = csrf_client.cookies['csrftoken'].value
+        with override_settings(PAYMENT_MODE='mock'):
+            response = csrf_client.post(
+                '/api/users/deposit/',
+                {'amount': '10.00'},
+                content_type='application/json',
+                HTTP_ORIGIN='http://127.0.0.1:5173',
+                HTTP_X_CSRFTOKEN=csrf_token,
+            )
+        self.assertEqual(response.status_code, 200)
+
 
 class ProductTests(APITestCase):
     def test_list_products(self):

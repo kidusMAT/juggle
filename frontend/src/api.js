@@ -1,6 +1,12 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const localApiHost = typeof window !== 'undefined' && window.location.hostname === '127.0.0.1'
+  ? '127.0.0.1'
+  : 'localhost';
+const configuredApiBase = import.meta.env.VITE_API_URL;
+const API_BASE = configuredApiBase
+  ? configuredApiBase.replace(/^http:\/\/(localhost|127\.0\.0\.1)(?=:8000)/, `http://${localApiHost}`)
+  : `http://${localApiHost}:8000/api`;
 
 const api = axios.create({
   baseURL: API_BASE,
