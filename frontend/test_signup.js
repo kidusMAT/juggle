@@ -1,3 +1,4 @@
+/* global require */
 const puppeteer = require('puppeteer');
 
 (async () => {

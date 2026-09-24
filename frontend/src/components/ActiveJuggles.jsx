@@ -3,11 +3,12 @@ import api, { API_BASE } from '../api';
 import { Package, ShieldCheck, Zap, Info, Pin, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import HubSidebar from './HubSidebar';
+import { useAuth } from '../AuthContext';
 
 function ActiveJuggles() {
   const navigate = useNavigate();
   const [juggles, setJuggles] = useState([]);
-  const [user, setUser] = useState(null);
+  const { user, refreshUser } = useAuth();
   const [timeLeft, setTimeLeft] = useState(300);
   const [showRelive, setShowRelive] = useState(false);
   const [prevTimeLeft, setPrevTimeLeft] = useState(300);
@@ -32,10 +33,9 @@ function ActiveJuggles() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const userRes = await api.get('/users/me/');
-        setUser(userRes.data);
-        if (userRes.data.seconds_until_next_change !== undefined) {
-          const newTime = userRes.data.seconds_until_next_change;
+        const userData = await refreshUser();
+        if (userData?.seconds_until_next_change !== undefined) {
+          const newTime = userData.seconds_until_next_change;
           // Detect phase reset: timer jumped back up from near-zero
           if (prevTimeLeft <= 2 && newTime > 10) {
             setShowRelive(true);
@@ -75,7 +75,7 @@ function ActiveJuggles() {
       clearInterval(interval);
       clearInterval(timerInterval);
     };
-  }, []);
+  }, [navigate, prevTimeLeft, refreshUser]);
 
   const handleCancel = async (sessionId) => {
     try {
@@ -100,17 +100,6 @@ function ActiveJuggles() {
     if (days > 0) return `${days}d ${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     if (hrs > 0) return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const calculateTimeRemaining = (expiresAt) => {
-    const expires = new Date(expiresAt).getTime();
-    const now = new Date().getTime();
-    const diff = expires - now;
-    if (diff <= 0) return "Expired";
-    
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
 
   if (!user) {

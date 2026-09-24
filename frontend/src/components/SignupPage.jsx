@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api, { API_BASE } from '../api';
 import { UserPlus, ArrowRight, Mail, Lock, User as UserIcon } from 'lucide-react';
 import Navbar from './Navbar';
 
 function SignupPage() {
-  const navigate = useNavigate();
   const [formData, setFormData] = useState({
     username: '',
     email: '',

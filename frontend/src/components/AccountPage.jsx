@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import api, { API_BASE } from '../api';
 import Navbar from './Navbar';
+import { useAuth } from '../AuthContext';
 import {
   User, Wallet, TrendingUp, History, ArrowRight,
   LogOut, Settings, LayoutDashboard, ShoppingBag,
@@ -10,8 +11,8 @@ import {
 } from 'lucide-react';
 
 function AccountPage() {
-  const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { user: userData, authStatus, login: ctxLogin, logout: ctxLogout, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loginData, setLoginData] = useState({ username: '', password: '' });
   const [authError, setAuthError] = useState('');
@@ -20,40 +21,19 @@ function AccountPage() {
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [isTopUpProcessing, setIsTopUpProcessing] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [paymentStep, setPaymentStep] = useState('input');
   const [paymentError, setPaymentError] = useState('');
   const [depositAmount, setDepositAmount] = useState('');
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawPhone, setWithdrawPhone] = useState('');
 
-  const fetchUser = async () => {
-    try {
-      const res = await api.get('/users/me/');
-      setUserData(res.data);
-      if (res.data.phone_number) {
-        setPhoneNumber(res.data.phone_number);
-      }
-    } catch (err) {
-      console.error(err);
-      setUserData(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchUser();
     const params = new URLSearchParams(window.location.search);
-    if (params.get('payment') === 'juggler_success') {
-      fetchUser();
+    if (params.get('payment') === 'juggler_success' || params.get('payment') === 'deposit_success') {
+      refreshUser();
       window.history.replaceState({}, '', '/account');
     }
-    if (params.get('payment') === 'deposit_success') {
-      fetchUser();
-      window.history.replaceState({}, '', '/account');
-    }
-  }, []);
+  }, [refreshUser]);
 
   const handleBecomeJuggler = () => {
     setPaymentStep('input');
@@ -117,9 +97,9 @@ function AccountPage() {
     setPaymentError('');
 
     try {
-      const res = await api.post('/users/withdraw/', { amount, phone_number: withdrawPhone });
+      await api.post('/users/withdraw/', { amount, phone_number: withdrawPhone });
       setPaymentStep('success');
-      fetchUser();
+      refreshUser();
       setTimeout(() => {
         setShowWithdrawModal(false);
         setPaymentStep('input');
@@ -152,9 +132,9 @@ function AccountPage() {
     setAuthError('');
     try {
       const res = await api.post('/users/login_user/', loginData);
-      setUserData(res.data);
-      window.location.reload(); 
-    } catch (err) {
+      ctxLogin(res.data);
+      navigate('/');
+    } catch {
       setAuthError('Invalid username or password');
     }
   };
@@ -162,14 +142,15 @@ function AccountPage() {
   const handleLogout = async () => {
     try {
       await api.post('/users/logout_user/', {});
-      setUserData(null);
-      window.location.href = '/shop'; 
+      ctxLogout();
+      navigate('/shop');
     } catch (err) {
       console.error("Logout failed", err);
     }
   };
 
-  if (loading) {
+  // Show nothing auth-specific while session check is in flight
+  if (authStatus === 'loading') {
     return (
       <div className="container" style={{ padding: '2rem', textAlign: 'center' }}>
         <Navbar />

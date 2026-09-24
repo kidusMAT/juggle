@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import api, { API_BASE } from '../api';
 import { ShoppingBag, ChevronRight, ChevronLeft, CheckCircle, XCircle, CreditCard, ShieldCheck, Flame, Clock } from 'lucide-react';
 import Navbar from './Navbar';
+import { useAuth } from '../AuthContext';
 
 const placeholderColors = [
   '#fce7f3', '#ecfdf5', '#e0f2fe', '#1f2937', '#f3f4f6',
@@ -12,18 +13,19 @@ const FloatingParticles = ({ count = 15 }) => {
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden', zIndex: 1 }}>
       {[...Array(count)].map((_, i) => {
-        const tx = (Math.random() - 0.5) * 400;
-        const ty = (Math.random() - 0.5) * 400;
-        const size = 2 + Math.random() * 4;
-        const delay = Math.random() * 10;
-        const duration = 10 + Math.random() * 20;
+        const seed = i + 1;
+        const tx = ((seed * 37) % 400) - 200;
+        const ty = ((seed * 53) % 400) - 200;
+        const size = 2 + (seed % 4);
+        const delay = (seed * 7) % 10;
+        const duration = 10 + ((seed * 11) % 20);
         return (
           <div
             key={i}
             style={{
               position: 'absolute',
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
+              left: `${(seed * 29) % 100}%`,
+              top: `${(seed * 47) % 100}%`,
               width: `${size}px`,
               height: `${size}px`,
               background: i % 2 === 0 ? 'var(--neon-purple)' : 'var(--neon-green)',
@@ -45,12 +47,13 @@ const Sparks = ({ count = 30 }) => {
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 10 }}>
       {[...Array(count)].map((_, i) => {
-        const angle = Math.random() * Math.PI * 2;
-        const velocity = 20 + Math.random() * 60;
+        const seed = i + 1;
+        const angle = (seed * 1.7) % (Math.PI * 2);
+        const velocity = 20 + ((seed * 17) % 60);
         const dx = Math.cos(angle) * velocity;
-        const dy = Math.sin(angle) * velocity - (20 + Math.random() * 40);
-        const size = 1 + Math.random() * 3;
-        const delay = Math.random() * 1.5;
+        const dy = Math.sin(angle) * velocity - (20 + ((seed * 13) % 40));
+        const size = 1 + (seed % 3);
+        const delay = (seed * 3) % 1.5;
         return (
           <div
             key={i}
@@ -77,6 +80,7 @@ const Sparks = ({ count = 30 }) => {
 
 function BuyerMarketplace() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [nextPage, setNextPage] = useState(null);
@@ -94,7 +98,6 @@ function BuyerMarketplace() {
   const [expiredProductIds, setExpiredProductIds] = useState(new Set());
   const [selectedQuantity, setSelectedQuantity] = useState(1);
   const [allCategories, setAllCategories] = useState([]);
-  const [tick, setTick] = useState(0);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState(null);
   const [processingPayment, setProcessingPayment] = useState(false);
@@ -152,11 +155,10 @@ function BuyerMarketplace() {
 
   const fetchPhaseTime = async () => {
     try {
-      const res = await api.get(`${API_BASE}/users/me/`);
-      if (res.data.seconds_until_next_change !== undefined) {
-        setPhaseTimeLeft(res.data.seconds_until_next_change);
+      if (user?.seconds_until_next_change !== undefined) {
+        setPhaseTimeLeft(user.seconds_until_next_change);
       }
-    } catch (err) { /* silent */ }
+    } catch { /* silent */ }
   };
 
   useEffect(() => {
@@ -190,7 +192,6 @@ function BuyerMarketplace() {
     const timer = setInterval(() => {
       const currentTime = Date.now();
       setNow(currentTime);
-      setTick(t => t + 1);
 
       setDeals(prevDeals => {
         let itemsToRemove = [];
@@ -253,19 +254,6 @@ function BuyerMarketplace() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleAddToCart = async (deal) => {
-    try {
-      await api.post(`${API_BASE}/cart/add_to_cart/`, {
-        product_id: deal.product.id,
-        offer_id: deal.is_direct ? 'direct' : deal.id,
-        quantity: 1
-      });
-      showNotification(`Added ${deal.product.name} to cart!`, 'success');
-    } catch (err) {
-      console.error("Cart error", err);
-      showNotification(`Failed to add ${deal.product.name} to cart.`, 'error');
-    }
-  };
 
   const confirmMockPayment = async () => {
     if (!selectedOffer) return;
@@ -351,7 +339,6 @@ function BuyerMarketplace() {
     if (!deal || !deal.product) return null;
     const product = deal.product;
     const bgColor = placeholderColors[idx % placeholderColors.length];
-    const isDark = bgColor === '#1f2937';
     const isDirectSale = deal.is_direct;
 
     let productSecondsLeft = 0;
@@ -662,7 +649,7 @@ function BuyerMarketplace() {
           </div>
           <div className="horizontal-scroller" style={{ position: 'relative', zIndex: 2 }}>
             {/* Group by brand and show one representative product per brand */}
-            {Array.from(new Set(directDeals.map(d => d.product.brand))).map((brand, bIdx) => {
+            {Array.from(new Set(directDeals.map(d => d.product.brand))).map((brand) => {
               const representativeDeal = directDeals.find(d => d.product.brand === brand);
               return (
                 <div 

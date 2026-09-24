@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import ProductViewSet, JuggleViewSet, UserViewSet, CartViewSet, CategoryViewSet, NotificationViewSet, AdminDashboardViewSet, TransactionViewSet, OrderViewSet, ReviewViewSet, ConversationViewSet, MessageViewSet, DeliveryTrackingViewSet
+from .views import ProductViewSet, JuggleViewSet, UserViewSet, CartViewSet, CategoryViewSet, NotificationViewSet, AdminDashboardViewSet, TransactionViewSet, OrderViewSet, ReviewViewSet, ConversationViewSet, MessageViewSet, DeliveryTrackingViewSet, csrf_token
 
 router = DefaultRouter()
 router.register(r'products', ProductViewSet)
@@ -18,5 +18,6 @@ router.register(r'messages', MessageViewSet, basename='messages')
 router.register(r'delivery-tracking', DeliveryTrackingViewSet, basename='delivery-tracking')
 
 urlpatterns = [
+    path('csrf/', csrf_token, name='csrf-token'),
     path('', include(router.urls)),
 ]

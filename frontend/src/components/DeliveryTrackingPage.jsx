@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import api, { API_BASE } from '../api';
 import Navbar from './Navbar';
 import { Package, MapPin, Clock, CheckCircle, Truck, AlertCircle, Search, ArrowRight } from 'lucide-react';
 
 export default function DeliveryTrackingPage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -54,7 +53,7 @@ export default function DeliveryTrackingPage() {
     try {
       const res = await api.get(`/delivery-tracking/by_tracking_number/?tracking_number=${trackingNumber}`);
       setSearchResult(res.data);
-    } catch (err) {
+    } catch {
       setSearchError('Order not found with that tracking number');
     }
   };
@@ -242,7 +241,7 @@ export default function DeliveryTrackingPage() {
                     }} />
 
                     {/* Tracking Steps */}
-                    {trackingUpdates.map((update, index) => (
+                    {trackingUpdates.map((update) => (
                       <div
                         key={update.id}
                         style={{

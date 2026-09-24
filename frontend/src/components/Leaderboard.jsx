@@ -33,13 +33,6 @@ export default function Leaderboard() {
     return true;
   });
 
-  const getRankStyle = (rank) => {
-    if (rank === 1) return { background: 'linear-gradient(135deg, #FFD700, #FFA500)', color: '#000', boxShadow: '0 0 30px rgba(255, 215, 0, 0.5)' };
-    if (rank === 2) return { background: 'linear-gradient(135deg, #C0C0C0, #A8A8A8)', color: '#000', boxShadow: '0 0 20px rgba(192, 192, 192, 0.5)' };
-    if (rank === 3) return { background: 'linear-gradient(135deg, #CD7F32, #B8860B)', color: '#000', boxShadow: '0 0 20px rgba(205, 127, 50, 0.5)' };
-    return { background: 'var(--bg-card)', color: 'inherit' };
-  };
-
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-main)', color: 'var(--text-primary)' }}>
       <Navbar />

@@ -87,6 +87,7 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ['id', 'name', 'brand', 'description', 'base_price', 'category', 'category_name', 'attributes', 'image_url', 'image', 'delivery_type', 'delivery_fee', 'status', 'stock', 'remaining_slots', 'seller', 'seller_name', 'allow_juggling', 'is_limited', 'images', 'variants']
+        read_only_fields = ['seller', 'status']
 
     def get_category_name(self, obj):
         if obj.category:
@@ -151,6 +152,7 @@ class JuggleSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = JuggleSession
         fields = ['id', 'user', 'juggler_name', 'product', 'markup_price', 'start_time', 'expires_at', 'is_active']
+        read_only_fields = ['user', 'start_time']
 
 
 class BuyerMarketSerializer(serializers.ModelSerializer):
@@ -209,6 +211,7 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = ['id', 'product', 'product_name', 'product_image', 'seller', 'seller_name', 'juggler', 'juggler_name', 'quantity', 'total_price', 'status', 'shipping_address', 'tracking_number', 'notes', 'created_at', 'updated_at']
+        read_only_fields = ['seller', 'juggler', 'total_price', 'status']
 
     def get_product_image(self, obj):
         if obj.product.image:

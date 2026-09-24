@@ -10,6 +10,16 @@ const api = axios.create({
   },
 });
 
+api.interceptors.request.use((config) => {
+  const csrfCookie = document.cookie
+    .split('; ')
+    .find((cookie) => cookie.startsWith('csrftoken='));
+  if (csrfCookie) {
+    config.headers['X-CSRFToken'] = decodeURIComponent(csrfCookie.split('=')[1]);
+  }
+  return config;
+});
+
 let isRedirecting = false;
 
 api.interceptors.response.use(

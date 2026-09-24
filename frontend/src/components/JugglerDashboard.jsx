@@ -3,6 +3,7 @@ import api, { API_BASE } from '../api';
 import { ShoppingBag, ShieldCheck, Zap, Info, Pin, Layers, Activity, Crown, Search, CheckCircle, XCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import HubSidebar from './HubSidebar';
+import { useAuth } from '../AuthContext';
 
 const MOCK_PRODUCTS = [
   { id: 1, name: "Vintage Leather Satchel", brand: "Sheba Leather", description: "Handcrafted Ethiopian leather satchel with brass fittings. Each piece tells a story.", base_price: "2500.00", category: 1, category_name: "Accessories", image_url: "", status: "AVAILABLE", stock: 5, remaining_slots: 5, allow_juggling: true, is_limited: true, delivery_type: "ABET", delivery_fee: "100.00", attributes: { Material: "Full-grain Leather", Color: "Cognac" } },
@@ -15,7 +16,7 @@ const MOCK_PRODUCTS = [
 
 function JugglerDashboard() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, refreshUser } = useAuth();
   const [products, setProducts] = useState(MOCK_PRODUCTS);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
   const [showRelive, setShowRelive] = useState(false);
@@ -54,10 +55,9 @@ function JugglerDashboard() {
 
   const fetchUserStatus = React.useCallback(async () => {
     try {
-      const userRes = await api.get('/users/me/');
-      setUser(userRes.data);
-      if (userRes.data.seconds_until_next_change !== undefined) {
-        const newTime = userRes.data.seconds_until_next_change;
+      const userData = await refreshUser();
+      if (userData?.seconds_until_next_change !== undefined) {
+        const newTime = userData.seconds_until_next_change;
         // Logic for "RELIVE" effect
         if (timeLeft <= 2 && newTime > 10) {
           setShowRelive(true);
@@ -71,7 +71,7 @@ function JugglerDashboard() {
         navigate('/account');
       }
     }
-  }, [navigate]); // Stable status fetcher
+  }, [navigate, refreshUser, timeLeft]);
 
   const fetchProductsData = React.useCallback(async (url = '/products/prototype_feed/', isLoadMore = false) => {
     if (isLoadMore) {

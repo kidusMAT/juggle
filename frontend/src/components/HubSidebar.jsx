@@ -73,7 +73,7 @@ function HubSidebar() {
   );
 }
 
-function SidebarLink({ to, icon: Icon, label, active }) {
+function SidebarLink({ to, icon, label, active }) {
   return (
     <Link to={to} style={{ textDecoration: 'none' }}>
       <div style={{
@@ -102,7 +102,7 @@ function SidebarLink({ to, icon: Icon, label, active }) {
           e.currentTarget.style.color = 'rgba(255,255,255,0.6)';
         }
       }}>
-        <Icon size={18} />
+        {React.createElement(icon, { size: 18 })}
         {label}
       </div>
     </Link>

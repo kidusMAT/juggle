@@ -1,5 +1,5 @@
 from rest_framework import viewsets, status, pagination
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser, IsAuthenticatedOrReadOnly
 from rest_framework.exceptions import PermissionDenied
@@ -14,11 +14,18 @@ from django.utils import timezone
 from django.db.models import Q, F, Avg, Sum, Count
 from django.db import transaction
 from django.contrib.auth import authenticate, login, logout
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.core.cache import cache
 from rest_framework.authentication import SessionAuthentication, BasicAuthentication
 import datetime
 import decimal
 from decimal import Decimal
+
+
+@api_view(['GET'])
+@ensure_csrf_cookie
+def csrf_token(request):
+    return Response({'detail': 'CSRF cookie set'})
 
 
 def get_badge(rank):
@@ -36,11 +43,6 @@ def get_badge(rank):
         return {'name': 'Rising', 'emoji': '📈', 'color': '#888'}
 
 
-class UnsafeSessionAuthentication(SessionAuthentication):
-    def enforce_csrf(self, request):
-        return request._request.user
-
-
 class StandardResultsSetPagination(pagination.PageNumberPagination):
     page_size = 12
     page_size_query_param = 'page_size'
@@ -56,7 +58,12 @@ class LargeResultsSetPagination(pagination.PageNumberPagination):
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().order_by('name')
     serializer_class = CategorySerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_permissions(self):
+        if self.request.method not in ['GET', 'HEAD', 'OPTIONS']:
+            return [IsAdminUser()]
+        return [AllowAny()]
 
 
 _last_cleanup_time = None
@@ -95,7 +102,7 @@ def cleanup_expired_juggles():
 
 
 class ProductViewSet(viewsets.ModelViewSet):
-    authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
@@ -103,6 +110,8 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Product.objects.all().order_by('-id')
+        if self.action not in ['list', 'retrieve', 'prototype_feed', 'buyer_market', 'fuzzy_search', 'buy_direct'] and not self.request.user.is_staff:
+            queryset = queryset.filter(seller=self.request.user)
         category = self.request.query_params.get('category')
         if category:
             queryset = queryset.filter(category=category)
@@ -369,10 +378,21 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 
 class JuggleViewSet(viewsets.ModelViewSet):
-    authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = JuggleSession.objects.all()
     serializer_class = JuggleSessionSerializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.action in ['update', 'partial_update', 'destroy'] and not self.request.user.is_staff:
+            queryset = queryset.filter(user=self.request.user)
+        return queryset
+
+    def perform_create(self, serializer):
+        if self.request.user.is_anonymous:
+            raise PermissionDenied("Authentication required")
+        serializer.save(user=self.request.user)
 
     @action(detail=True, methods=['post'])
     def buy_item(self, request, pk=None):
@@ -588,7 +608,7 @@ class JuggleViewSet(viewsets.ModelViewSet):
 
 
 class UserViewSet(viewsets.ModelViewSet):
-    authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [IsAuthenticated]
     queryset = User.objects.all()
     serializer_class = UserSerializer
@@ -718,12 +738,10 @@ class UserViewSet(viewsets.ModelViewSet):
         import datetime
 
         products = Product.objects.filter(seller=user)
-        transactions = Transaction.objects.filter(
-            Q(order__product__seller=user) | Q(juggle__seller=user)
-        )
+        transactions = Transaction.objects.filter(user=user)
 
         total_revenue = transactions.filter(
-            type='PURCHASE'
+            transaction_type='SALE'
         ).aggregate(total=Sum('amount'))['total'] or 0
 
         today = timezone.now().date()
@@ -733,11 +751,11 @@ class UserViewSet(viewsets.ModelViewSet):
             day_start = timezone.make_aware(datetime.datetime.combine(day, datetime.time.min))
             day_end = timezone.make_aware(datetime.datetime.combine(day, datetime.time.max))
             day_revenue = transactions.filter(
-                type='PURCHASE',
+                transaction_type='SALE',
                 created_at__range=(day_start, day_end)
             ).aggregate(total=Sum('amount'))['total'] or 0
             day_count = transactions.filter(
-                type='PURCHASE',
+                transaction_type='SALE',
                 created_at__range=(day_start, day_end)
             ).count()
             daily_sales.append({
@@ -759,14 +777,14 @@ class UserViewSet(viewsets.ModelViewSet):
             'expired': products.filter(status='EXPIRED').count(),
         }
 
-        avg_order_value = transactions.filter(type='PURCHASE').aggregate(
+        avg_order_value = transactions.filter(transaction_type='SALE').aggregate(
             avg=Sum('amount') / Count('id')
         )['avg'] or 0
 
         return Response({
             'total_revenue': float(total_revenue),
             'total_products': products.count(),
-            'total_orders': transactions.filter(type='PURCHASE').count(),
+            'total_orders': transactions.filter(transaction_type='SALE').count(),
             'avg_order_value': float(avg_order_value),
             'daily_sales': daily_sales,
             'category_breakdown': [
@@ -789,8 +807,8 @@ class UserViewSet(viewsets.ModelViewSet):
         for rank, juggler in enumerate(jugglers, 1):
             cb_power = juggler.get_calculated_cb()
             earnings = Transaction.objects.filter(
-                type='JUGGLE_PROFIT',
-                juggle__seller=juggler
+                transaction_type='JUGGLE_PROFIT',
+                user=juggler
             ).aggregate(total=Sum('amount'))['total'] or 0
 
             success_rate = 100
@@ -1004,6 +1022,8 @@ class UserViewSet(viewsets.ModelViewSet):
         verification = chapa.verify_payment(tx_ref)
 
         if verification.get('success') and verification.get('status') == 'success':
+            if Transaction.objects.filter(reference_id=tx_ref).exists():
+                return Response({'success': 'Payment already processed'})
             if tx_ref.startswith('THE_JUGGLE_'):
                 try:
                     user = User.objects.get(email=verification.get('email'))
@@ -1015,7 +1035,7 @@ class UserViewSet(viewsets.ModelViewSet):
                         title='Deposit Received',
                         message=f'ETB {amount:.2f} has been added to your account.'
                     )
-                    Transaction.create(user, 'DEPOSIT', amount, 'Chapa deposit')
+                    Transaction.create(user, 'DEPOSIT', amount, 'Chapa deposit', reference_id=tx_ref)
                     return Response({"success": "Payment verified and credited"})
                 except User.DoesNotExist:
                     return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -1132,7 +1152,7 @@ class AdminDashboardViewSet(viewsets.ViewSet):
 
 
 class CartViewSet(viewsets.ModelViewSet):
-    authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [AllowAny]
     serializer_class = CartItemSerializer
     pagination_class = None
@@ -1187,7 +1207,12 @@ class CartViewSet(viewsets.ModelViewSet):
         user = request.user
         product_id = request.data.get('product_id')
         offer_id = request.data.get('offer_id')
-        quantity = int(request.data.get('quantity', 1))
+        try:
+            quantity = int(request.data.get('quantity', 1))
+        except (ValueError, TypeError):
+            return Response({'error': 'Quantity must be a valid integer'}, status=status.HTTP_400_BAD_REQUEST)
+        if quantity < 1:
+            return Response({'error': 'Quantity must be at least 1'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             product = Product.objects.get(id=product_id)
@@ -1345,7 +1370,7 @@ class CartViewSet(viewsets.ModelViewSet):
 
 
 class NotificationViewSet(viewsets.ViewSet):
-    authentication_classes = [UnsafeSessionAuthentication, BasicAuthentication]
+    authentication_classes = [SessionAuthentication, BasicAuthentication]
     permission_classes = [AllowAny]
 
     def list(self, request):
@@ -1403,9 +1428,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         user = self.request.user
         return Order.objects.filter(Q(buyer=user) | Q(seller=user) | Q(juggler=user))
 
+    def perform_create(self, serializer):
+        serializer.save(buyer=self.request.user, status='PENDING')
+
     @action(detail=True, methods=['post'])
     def update_status(self, request, pk=None):
         order = self.get_object()
+        if not (request.user.is_staff or order.seller == request.user or order.juggler == request.user):
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         new_status = request.data.get('status')
         
         valid_statuses = ['PENDING', 'CONFIRMED', 'PROCESSING', 'SHIPPED', 'DELIVERED', 'CANCELLED']
@@ -1427,6 +1457,8 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def add_tracking(self, request, pk=None):
         order = self.get_object()
+        if not (request.user.is_staff or order.seller == request.user):
+            return Response({'error': 'Permission denied'}, status=status.HTTP_403_FORBIDDEN)
         tracking_number = request.data.get('tracking_number', '')
         order.tracking_number = tracking_number
         order.status = 'SHIPPED'
@@ -1546,9 +1578,16 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         conversation_id = self.request.query_params.get('conversation')
+        queryset = Message.objects.filter(conversation__participants=self.request.user)
         if conversation_id:
-            return Message.objects.filter(conversation_id=conversation_id)
-        return Message.objects.filter(conversation__participants=self.request.user)
+            queryset = queryset.filter(conversation_id=conversation_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        conversation = serializer.validated_data['conversation']
+        if not conversation.participants.filter(id=self.request.user.id).exists():
+            raise PermissionDenied("You are not a participant in this conversation")
+        serializer.save(sender=self.request.user)
 
 
 class DeliveryTrackingViewSet(viewsets.ModelViewSet):
@@ -1558,11 +1597,12 @@ class DeliveryTrackingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         order_id = self.request.query_params.get('order')
-        if order_id:
-            return DeliveryTracking.objects.filter(order_id=order_id).order_by('-created_at')
-        return DeliveryTracking.objects.filter(
+        queryset = DeliveryTracking.objects.filter(
             Q(order__buyer=user) | Q(order__seller=user) | Q(updated_by=user)
         ).order_by('-created_at')
+        if order_id:
+            return queryset.filter(order_id=order_id)
+        return queryset
 
     def perform_create(self, serializer):
         order_id = self.request.data.get('order')
@@ -1571,6 +1611,9 @@ class DeliveryTrackingViewSet(viewsets.ModelViewSet):
         except Order.DoesNotExist:
             from rest_framework.exceptions import NotFound
             raise NotFound("Order not found")
+
+        if not (self.request.user.is_staff or order.seller == self.request.user or order.buyer == self.request.user):
+            raise PermissionDenied("You are not associated with this order")
 
         tracking = serializer.save(updated_by=self.request.user)
 

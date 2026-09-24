@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, User, ShoppingBag, Package, X, Zap, LogOut, Shield, AlertCircle, CheckCircle, Bell, Award, MessageCircle } from 'lucide-react';
-import api, { API_BASE } from '../api';
+import { Search, SlidersHorizontal, User, ShoppingBag, Package, X, Zap, LogOut, Shield, AlertCircle, Bell, Award, MessageCircle } from 'lucide-react';
+import api from '../api';
+import { useAuth } from '../AuthContext';
 
 const COLORS = [
   { name: 'Black', hex: '#111' },
@@ -26,12 +27,12 @@ function Navbar({
   juggleOnly, onJuggleOnlyToggle
 }) {
   const navigate = useNavigate();
+  const { user: userData, authStatus, logout: ctxLogout, refreshUser } = useAuth();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const hasFilters = typeof onSearchChange === 'function';
   const [visible, setVisible] = useState(true);
   const lastScrollY = useRef(0);
   const [cartCount, setCartCount] = useState(0);
-  const [userData, setUserData] = useState(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showBecomeJuggler, setShowBecomeJuggler] = useState(false);
   const [becomingJuggler, setBecomingJuggler] = useState(false);
@@ -50,22 +51,6 @@ function Navbar({
       if (err.response?.status !== 401 && err.response?.status !== 403) {
         console.error("Error fetching cart count", err);
       }
-    }
-  };
-
-  const fetchUser = async () => {
-    try {
-      const res = await api.get('/users/me/');
-      if (res.status === 200 && res.data?.id) {
-        setUserData(res.data);
-      } else {
-        setUserData(null);
-      }
-    } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) {
-        console.error("Error fetching user", err);
-      }
-      setUserData(null);
     }
   };
 
@@ -127,7 +112,7 @@ function Navbar({
     try {
       const res = await api.post('/users/become_juggler/');
       if (res.data.is_juggler) {
-        setUserData(prev => prev ? { ...prev, is_juggler: true } : null);
+        await refreshUser();
         setShowBecomeJuggler(false);
         navigate('/juggler');
       }
@@ -151,16 +136,16 @@ function Navbar({
   const handleLogout = async () => {
     try {
       await api.post('/users/logout_user/');
-      setUserData(null);
-      window.location.href = '/shop'; // Redirect to Buyers Hub
+      ctxLogout();
+      navigate('/shop');
     } catch (err) {
       console.error("Logout failed", err);
     }
   };
 
   useEffect(() => {
+    if (authStatus !== 'authenticated') return undefined;
     fetchCartCount();
-    fetchUser();
     fetchNotifications();
     requestNotificationPermission();
     const interval = setInterval(fetchCartCount, 5000);
@@ -169,7 +154,7 @@ function Navbar({
       clearInterval(interval);
       clearInterval(notifInterval);
     };
-  }, []);
+  }, [authStatus]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -400,15 +385,16 @@ function Navbar({
               <Link to="/account" style={{ color: 'inherit', display: 'flex', alignItems: 'center' }}>
                 <User size={22} style={{ cursor: 'pointer' }} title="My Account" />
               </Link>
-              {userData ? (
-                <span 
+              {authStatus === 'loading' ? null : authStatus === 'authenticated' ? (
+                <span
+                  id="navbar-logout-btn"
                   onClick={() => setShowLogoutConfirm(true)}
                   style={{ fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer', color: '#ff4d4f' }}
                 >
                   Logout
                 </span>
               ) : (
-                <Link to="/account" style={{ textDecoration: 'none', color: 'var(--neon-purple)', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                <Link id="navbar-login-link" to="/account" style={{ textDecoration: 'none', color: 'var(--neon-purple)', fontSize: '0.75rem', fontWeight: 'bold' }}>
                   Login
                 </Link>
               )}

@@ -1,18 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api, { API_BASE } from '../api';
+import { API_BASE } from '../api';
 import HubSidebar from './HubSidebar';
 import PyramidVisualizer from './PyramidVisualizer';
+import { useAuth } from '../AuthContext';
 
 function PyramidPage() {
   const navigate = useNavigate();
-  const [user, setUser] = useState(null);
+  const { user, refreshUser } = useAuth();
 
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        const res = await api.get('/users/me/');
-        setUser(res.data);
+        await refreshUser();
       } catch (err) {
         console.error("Error fetching user data", err);
         if (err.response?.status === 401 || err.response?.data?.error === "Not authenticated") {
@@ -23,7 +23,7 @@ function PyramidPage() {
     fetchUser();
     const interval = setInterval(fetchUser, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [navigate, refreshUser]);
 
   if (!user) return null;
 

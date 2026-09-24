@@ -82,7 +82,7 @@ function ProductDetailPage() {
         quantity: prodId ? 1 : quantity
       });
       showNotification(`Added ${targetName} to cart!`, 'success');
-    } catch (err) {
+    } catch {
       showNotification(`Failed to add ${targetName} to cart.`, 'error');
     }
   };

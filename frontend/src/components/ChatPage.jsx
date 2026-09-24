@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import api, { API_BASE } from '../api';
 import Navbar from './Navbar';
 import { Send, ArrowLeft, MessageCircle, Search } from 'lucide-react';
 
 export default function ChatPage() {
-  const navigate = useNavigate();
   const [conversations, setConversations] = useState([]);
   const [selectedConversation, setSelectedConversation] = useState(null);
   const [messages, setMessages] = useState([]);

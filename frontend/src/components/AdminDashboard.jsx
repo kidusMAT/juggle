@@ -44,7 +44,7 @@ function AdminDashboard() {
       showNotification(`Seller ${action === 'approve' ? 'Approved' : 'Rejected'} successfully!`, "success");
       setApplications(applications.filter(app => app.id !== userId));
       setStats(prev => ({ ...prev, pending_sellers: prev.pending_sellers - 1 }));
-    } catch (err) {
+    } catch {
       showNotification("Action failed. Try again.", "error");
     }
   };

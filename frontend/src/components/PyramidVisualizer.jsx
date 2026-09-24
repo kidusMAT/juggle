@@ -65,7 +65,7 @@ const PyramidVisualizer = ({ pyramidData, currentPhase, totalSafeBalance = 10000
       </div>
       
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-        {tiers.map((tier, idx) => {
+        {tiers.map((tier) => {
           const isCurrentPhase = tier.phase === currentPhase;
           const blockCount = tier.survivors;
           

@@ -9,13 +9,17 @@ import {
   TrendingUp, ShoppingCart, BarChart as BarChartIcon
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
+import { useAuth } from '../AuthContext';
 
 function SellerDashboard() {
   const navigate = useNavigate();
+  const { user, refreshUser } = useAuth();
+  const [userDraft, setUserDraft] = useState(null);
+  const sellerUser = userDraft || user;
   const [activeTab, setActiveTab] = useState('dashboard');
   const [myProducts, setMyProducts] = useState([]);
   const [stats, setStats] = useState({ revenue: 0, active: 0, sold: 0 });
-  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [, setLoadingProducts] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   
@@ -27,7 +31,6 @@ function SellerDashboard() {
   const [addressFile, setAddressFile] = useState(null);
   const [vatFile, setVatFile] = useState(null);
   const [importFile, setImportFile] = useState(null);
-  const [user, setUser] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     brand: '',
@@ -43,11 +46,10 @@ function SellerDashboard() {
   
   const [imageFiles, setImageFiles] = useState([]);
   const [imagePreviews, setImagePreviews] = useState([]);
-  const [imageErrors, setImageErrors] = useState([]);
+  const [, setImageErrors] = useState([]);
   const [variants, setVariants] = useState([]); // [{name, price_override, stock}]
   const [variantOptions, setVariantOptions] = useState([{ name: 'Color', values: '' }, { name: 'Size', values: '' }]);
   
-  const [showGuide, setShowGuide] = useState(false);
   const [aiApplied, setAiApplied] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [checklist, setChecklist] = useState({ focus: false, light: false, background: false, frame: false });
@@ -137,12 +139,11 @@ function SellerDashboard() {
       fetchAnalytics();
       const fetchUser = async () => {
         try {
-          const res = await api.get('/users/me/');
-          setUser(res.data);
+        const currentUser = await refreshUser();
         
-        if (res.data.seller_status === 'UNVERIFIED' || res.data.seller_status === 'REJECTED' || res.data.seller_status === 'PENDING') {
+        if (currentUser?.seller_status === 'UNVERIFIED' || currentUser?.seller_status === 'REJECTED' || currentUser?.seller_status === 'PENDING') {
           setStep(0);
-        } else if (res.data.seller_status === 'VERIFIED') {
+        } else if (currentUser?.seller_status === 'VERIFIED') {
           setStep(prev => prev === 0 ? 1 : prev);
         }
       } catch (err) { 
@@ -153,7 +154,7 @@ function SellerDashboard() {
       }
     };
     fetchUser();
-  }, []);
+  }, [navigate, refreshUser]);
 
   const handleImageChange = (e) => {
     const files = Array.from(e.target.files);
@@ -357,7 +358,7 @@ function SellerDashboard() {
 
     try {
       const res = await api.post('/users/verify_seller/', payload);
-      setUser(res.data);
+      setUserDraft(res.data);
       // Don't call setStep(1). The useEffect/render logic will handle status.
       showNotification("Seller details submitted for review!", "success");
     } catch (err) {
@@ -610,7 +611,7 @@ function SellerDashboard() {
                         <p className="text-muted" style={{ marginBottom: '2rem', maxWidth: '400px', margin: '0 auto 2rem' }}>
                           Unfortunately, your seller application was not approved. Please ensure your business license is clear and matches your details.
                         </p>
-                        <button className="btn-checkout" style={{ background: '#000', color: '#fff', width: 'auto', padding: '1rem 2rem' }} onClick={() => setUser({...user, seller_status: 'UNVERIFIED'})}>
+                        <button className="btn-checkout" style={{ background: '#000', color: '#fff', width: 'auto', padding: '1rem 2rem' }} onClick={() => setUserDraft({...sellerUser, seller_status: 'UNVERIFIED'})}>
                           Try Again
                         </button>
                       </div>
@@ -624,19 +625,19 @@ function SellerDashboard() {
                             <h4 style={{ marginBottom: '1.5rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>Basic Identity</h4>
                             <div style={{ marginBottom: '1.5rem' }}>
                               <label className="label-neon">Full Name (Legal)</label>
-                              <input className="input-neon" value={user?.seller_full_name || ''} onChange={e => setUser({...user, seller_full_name: e.target.value})} placeholder="e.g. Abebe Bikila" />
+                              <input className="input-neon" value={sellerUser?.seller_full_name || ''} onChange={e => setUserDraft({...sellerUser, seller_full_name: e.target.value})} placeholder="e.g. Abebe Bikila" />
                             </div>
                             <div style={{ marginBottom: '1.5rem' }}>
                               <label className="label-neon">Business / Shop Name</label>
-                              <input className="input-neon" value={user?.business_name || ''} onChange={e => setUser({...user, business_name: e.target.value})} placeholder="e.g. Bikila Electronics" />
+                              <input className="input-neon" value={sellerUser?.business_name || ''} onChange={e => setUserDraft({...sellerUser, business_name: e.target.value})} placeholder="e.g. Bikila Electronics" />
                             </div>
                             <div style={{ marginBottom: '1.5rem' }}>
                               <label className="label-neon">Phone Number</label>
-                              <input className="input-neon" value={user?.seller_phone || ''} onChange={e => setUser({...user, seller_phone: e.target.value})} placeholder="e.g. +251 911 234 567" />
+                              <input className="input-neon" value={sellerUser?.seller_phone || ''} onChange={e => setUserDraft({...sellerUser, seller_phone: e.target.value})} placeholder="e.g. +251 911 234 567" />
                             </div>
                             <div style={{ marginBottom: '1.5rem' }}>
                               <label className="label-neon">Tax Identification Number (TIN)</label>
-                              <input className="input-neon" value={user?.tin_number || ''} onChange={e => setUser({...user, tin_number: e.target.value})} placeholder="9-digit TIN number" />
+                              <input className="input-neon" value={sellerUser?.tin_number || ''} onChange={e => setUserDraft({...sellerUser, tin_number: e.target.value})} placeholder="9-digit TIN number" />
                             </div>
                           </div>
 
