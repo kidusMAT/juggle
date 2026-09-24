@@ -125,6 +125,20 @@ class AuthenticationTests(APITestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn('error', response.data)
 
+    def test_development_deposit_uses_local_payment_simulator(self):
+        from django.test import override_settings
+        with override_settings(PAYMENT_MODE='mock'):
+            self.client.login(username='testuser', password='testpass123')
+            response = self.client.post(
+                '/api/users/deposit/',
+                {'amount': '25.00'},
+                content_type='application/json'
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data['mock'])
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.actual_balance, Decimal('1025.00'))
+
 
 class ProductTests(APITestCase):
     def test_list_products(self):

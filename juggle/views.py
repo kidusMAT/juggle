@@ -11,6 +11,7 @@ from .serializers import (
     TransactionSerializer, OrderSerializer, ReviewSerializer, ConversationSerializer, MessageSerializer, DeliveryTrackingSerializer
 )
 from django.utils import timezone
+from django.conf import settings
 from django.db.models import Q, F, Avg, Sum, Count
 from django.db import transaction
 from django.contrib.auth import authenticate, login, logout
@@ -889,6 +890,17 @@ class UserViewSet(viewsets.ModelViewSet):
         if not user.email:
             return Response({"error": "Email is required for payment. Please update your email first."}, status=status.HTTP_400_BAD_REQUEST)
 
+        if settings.PAYMENT_MODE == 'mock':
+            user.is_juggler = True
+            user.save(update_fields=['is_juggler'])
+            Notification.create(
+                user=user,
+                notification_type='SYSTEM',
+                title='Development payment accepted',
+                message='Juggler access was enabled using the local development payment simulator.'
+            )
+            return Response({"success": "Development payment accepted", "is_juggler": True})
+
         from .chapa import chapa
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
         
@@ -900,7 +912,7 @@ class UserViewSet(viewsets.ModelViewSet):
             last_name=user.last_name or '',
             title="Juggler Access Fee",
             return_url=f"{frontend_url}/account?payment=juggler_success",
-            callback_url=f"{getattr(settings, 'SITE_URL', 'http://localhost:8000')}/api/payments/chapa/callback/"
+             callback_url=f"{getattr(settings, 'SITE_URL', 'http://localhost:8000')}/api/users/chapa_callback/"
         )
 
         if payment_result.get('success'):
@@ -934,6 +946,17 @@ class UserViewSet(viewsets.ModelViewSet):
         if amount > Decimal('100000'):
             return Response({"error": "Maximum deposit is ETB 100,000"}, status=status.HTTP_400_BAD_REQUEST)
 
+        if settings.PAYMENT_MODE == 'mock':
+            reference = f'MOCK_DEPOSIT_{timezone.now().strftime("%Y%m%d%H%M%S%f")}'
+            user.credit_balance(amount)
+            Transaction.create(user, 'DEPOSIT', amount, 'Development payment simulator deposit', reference_id=reference)
+            user.refresh_from_db()
+            return Response({
+                "success": "Development deposit completed",
+                "mock": True,
+                "balance": str(user.actual_balance),
+            })
+
         from .chapa import chapa
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
 
@@ -945,7 +968,7 @@ class UserViewSet(viewsets.ModelViewSet):
             last_name=user.last_name or '',
             title="Account Deposit",
             return_url=f"{frontend_url}/account?payment=deposit_success",
-            callback_url=f"{getattr(settings, 'SITE_URL', 'http://localhost:8000')}/api/payments/chapa/callback/"
+             callback_url=f"{getattr(settings, 'SITE_URL', 'http://localhost:8000')}/api/users/chapa_callback/"
         )
 
         if payment_result.get('success'):

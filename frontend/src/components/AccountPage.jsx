@@ -48,7 +48,11 @@ function AccountPage() {
 
     try {
       const res = await api.post('/users/become_juggler/', {});
-      if (res.data.checkout_url) {
+      if (res.data.mock) {
+        await refreshUser();
+        setPaymentStep('success');
+        setIsTopUpProcessing(false);
+      } else if (res.data.checkout_url) {
         window.location.href = res.data.checkout_url;
       }
     } catch (err) {
@@ -71,7 +75,11 @@ function AccountPage() {
 
     try {
       const res = await api.post('/users/deposit/', { amount });
-      if (res.data.checkout_url) {
+      if (res.data.mock) {
+        await refreshUser();
+        setPaymentStep('success');
+        setIsTopUpProcessing(false);
+      } else if (res.data.checkout_url) {
         window.location.href = res.data.checkout_url;
       }
     } catch (err) {

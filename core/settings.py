@@ -275,6 +275,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 CHAPA_PUBLIC_KEY = os.environ.get('CHAPA_PUBLIC_KEY', 'CHAPUBK_TEST_xxxxx')
 CHAPA_SECRET_KEY = os.environ.get('CHAPA_SECRET_KEY', 'CHASECK_TEST_xxxxx')
 CHAPA_ENCRYPTION_KEY = os.environ.get('CHAPA_ENCRYPTION_KEY', '')
+PAYMENT_MODE = os.environ.get('PAYMENT_MODE', 'mock' if DEBUG else 'chapa').lower()
 
 # URLs
 FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
