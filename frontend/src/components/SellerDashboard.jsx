@@ -87,7 +87,8 @@ function SellerDashboard() {
     const fetchCategories = async () => {
       try {
         const res = await api.get('/categories/');
-        setCategories(res.data);
+        const cats = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+        setCategories(cats);
       } catch (err) { console.error("Error fetching categories", err); }
     };
   
@@ -735,7 +736,7 @@ function SellerDashboard() {
                           required
                         >
                           <option value="">Select a Category...</option>
-                          {categories.map(cat => (
+                          {(Array.isArray(categories) ? categories : []).map(cat => (
                             <option key={cat.id} value={cat.id}>
                               {cat.parent ? `— ${cat.name}` : cat.name}
                             </option>

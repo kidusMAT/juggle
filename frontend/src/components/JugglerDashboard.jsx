@@ -110,7 +110,8 @@ function JugglerDashboard() {
     const fetchCategories = async () => {
       try {
         const res = await api.get('/categories/');
-        setCategories(res.data);
+        const cats = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+        setCategories(cats);
       } catch (err) {
         console.error("Error fetching categories", err);
       }
@@ -619,7 +620,7 @@ function JugglerDashboard() {
               }}
             >
               <option value="all" style={{ background: '#0a0a0a', color: 'white' }}>All Categories</option>
-              {categories.filter(c => !c.parent).map(cat => (
+              {(Array.isArray(categories) ? categories : []).filter(c => c && !c.parent).map(cat => (
                 <option key={cat.id} value={cat.id} style={{ background: '#0a0a0a', color: 'white' }}>
                   {cat.name}
                 </option>

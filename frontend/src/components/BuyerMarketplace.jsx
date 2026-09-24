@@ -145,7 +145,8 @@ function BuyerMarketplace() {
   const fetchCategories = async () => {
     try {
       const res = await api.get(`${API_BASE}/categories/`);
-      setAllCategories(res.data);
+      const cats = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+      setAllCategories(cats);
     } catch (err) { console.error("Error fetching categories", err); }
   };
 
@@ -320,7 +321,7 @@ function BuyerMarketplace() {
       });
   }, [deals, searchTerm, selectedCategory, selectedBrand, priceRange, juggleOnly, sortOrder]);
 
-  const categoryNames = ['All', ...new Set(allCategories.map(c => c.parent ? null : c.name).filter(n => n))];
+  const categoryNames = ['All', ...new Set((Array.isArray(allCategories) ? allCategories : []).map(c => c.parent ? null : c.name).filter(n => n))];
 
   // SPLIT DEALS INTO SECTIONS
   const liveJuggles = filteredDeals.filter(d => d && !d.is_direct);
