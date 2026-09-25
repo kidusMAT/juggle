@@ -159,6 +159,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         search = request.query_params.get('search', '').strip()
         category = request.query_params.get('category', '').strip()
+        brand = request.query_params.get('brand', '').strip()
         min_price = request.query_params.get('min_price', '').strip()
         max_price = request.query_params.get('max_price', '').strip()
 
@@ -180,6 +181,9 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         if category and category != 'All':
             products = products.filter(category__name__icontains=category)
+
+        if brand:
+            products = products.filter(brand__iexact=brand)
 
         if min_price:
             try:
@@ -623,6 +627,29 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.request.user.is_staff:
             return User.objects.all()
         return User.objects.filter(id=self.request.user.id)
+
+    @action(detail=False, methods=['get'], url_path='search')
+    def search(self, request):
+        query = request.query_params.get('q', '').strip()
+        if len(query) < 2:
+            return Response([])
+
+        users = User.objects.filter(
+            Q(username__icontains=query) |
+            Q(business_name__icontains=query) |
+            Q(seller_full_name__icontains=query)
+        ).exclude(id=request.user.id).order_by('username')[:20]
+
+        return Response([
+            {
+                'id': user.id,
+                'username': user.username,
+                'business_name': user.business_name or '',
+                'is_juggler': user.is_juggler,
+                'is_seller_verified': user.is_seller_verified,
+            }
+            for user in users
+        ])
 
     @action(detail=False, methods=['get'])
     def me(self, request):
@@ -1580,6 +1607,15 @@ class ConversationViewSet(viewsets.ModelViewSet):
             sender=request.user,
             content=content
         )
+
+        recipient = conversation.participants.exclude(id=request.user.id).first()
+        if recipient:
+            Notification.create(
+                user=recipient,
+                notification_type='SYSTEM',
+                title=f'New message from {request.user.username}',
+                message=content[:220]
+            )
 
         conversation.save()
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api, { API_BASE } from '../api';
-import { ShoppingBag, ShieldCheck, Zap, Info, Pin, Layers, Activity, Crown, Search, CheckCircle, XCircle } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { ShoppingBag, ShieldCheck, Zap, Info, Bookmark, Layers, Activity, Crown, Search, CheckCircle, XCircle } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import HubSidebar from './HubSidebar';
 import { useAuth } from '../AuthContext';
 
@@ -16,6 +16,7 @@ const MOCK_PRODUCTS = [
 
 function JugglerDashboard() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, refreshUser } = useAuth();
   const [products, setProducts] = useState(MOCK_PRODUCTS);
   const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
@@ -35,6 +36,10 @@ function JugglerDashboard() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [categories, setCategories] = useState([]);
   const [affordableOnly, setAffordableOnly] = useState(false);
+  const [watchlistIds, setWatchlistIds] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('juggle-watchlist') || '[]'); } catch { return []; }
+  });
+  const watchlistOnly = searchParams.get('view') === 'watchlist';
   const [notification, setNotification] = useState({ message: '', type: '', visible: false });
   const [reliveTransition, setReliveTransition] = useState('none');
 
@@ -43,6 +48,15 @@ function JugglerDashboard() {
     setTimeout(() => {
       setNotification(prev => ({ ...prev, visible: false }));
     }, 4000);
+  };
+
+  const toggleWatchlist = (productId) => {
+    setWatchlistIds(prev => {
+      const next = prev.includes(productId) ? prev.filter(id => id !== productId) : [...prev, productId];
+      localStorage.setItem('juggle-watchlist', JSON.stringify(next));
+      window.dispatchEvent(new CustomEvent('juggle-watchlist-updated'));
+      return next;
+    });
   };
 
   const placeholderColors = [
@@ -282,223 +296,98 @@ function JugglerDashboard() {
     const matchesBrand = brandFilter === 'all' || p.brand === brandFilter;
     const matchesCategory = categoryFilter === 'all' || String(p.category) === String(categoryFilter);
     const matchesAffordability = !affordableOnly || user.current_cb >= p.base_price;
+    const matchesWatchlist = !watchlistOnly || watchlistIds.includes(p.id);
 
-    return matchesSearch && matchesPrice && matchesBrand && matchesCategory && matchesAffordability;
+    return matchesSearch && matchesPrice && matchesBrand && matchesCategory && matchesAffordability && matchesWatchlist;
   });
 
-  // Product cards (with skeleton fallback)
+  // Market rows (with skeleton fallback)
   const productCards = products.length > 0
     ? filteredProducts.map((product, idx) => {
         const canJuggle = user.current_cb >= product.base_price;
-        const bgColor = placeholderColors[idx % placeholderColors.length];
-        const isDark = bgColor === '#1f2937';
         const isFlipped = flippedCardId === product.id;
+        const isWatched = watchlistIds.includes(product.id);
+        const slotsTaken = Math.max(0, (product.stock || product.remaining_slots || 0) - (product.remaining_slots || 0));
+        const fillRate = product.stock ? Math.round((slotsTaken / product.stock) * 100) : 0;
 
         return (
-          <div key={product.id} className={`card-flip-container ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : '')}`} style={{ perspective: '1000px', height: '480px' }}>
-            <div className={`card-inner ${isFlipped ? 'flipped' : ''}`} style={{ transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)', transition: 'transform 0.6s', transformStyle: 'preserve-3d', position: 'relative', width: '100%', height: '100%' }}>
-
-              {/* FRONT OF CARD */}
-              <div className="card-front card" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', padding: '0', background: 'var(--hub-surface)', display: 'flex', flexDirection: 'column', overflow: 'hidden', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
-                <div style={{
-                  height: '240px',
-                  background: bgColor,
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-                  flexShrink: 0
-                }}>
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 2L15 8L22 9L17 14L18 21L12 17.5L6 21L7 14L2 9L9 8L12 2Z" opacity="0.5" />
-                  </svg>
-                </div>
-
-                <div style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <h3 style={{ fontSize: '1.1rem', marginBottom: '0.25rem', color: 'var(--hub-text-main)' }}>{product.name}</h3>
-                  <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1rem', color: 'var(--hub-text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{product.description}</p>
-
-                  <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ fontSize: '1.2rem', fontWeight: '800', color: canJuggle ? 'var(--neon-green)' : 'var(--hub-text-main)' }}>
-                      ETB {product.base_price}
-                    </div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--hub-text-muted)' }}>
-                      {product.remaining_slots} / {product.stock} Slots
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-                    <button className="btn-icon" style={{ background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)', color: 'var(--hub-text-main)' }}>
-                      <Pin size={18} />
-                    </button>
-                    <button
-                      className="hub-btn hub-btn-neon"
-                      style={{ flex: 1, margin: 0 }}
-                      onClick={() => setFlippedCardId(product.id)}
-                      disabled={!canJuggle || product.remaining_slots <= 0}
-                    >
-                      {product.remaining_slots <= 0 ? 'Full' : 'Juggle'}
-                    </button>
-                  </div>
-                  {!canJuggle && product.remaining_slots > 0 &&
-                    <p style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center' }}>Insufficient Virtual Power</p>
-                  }
-                  {product.remaining_slots <= 0 &&
-                    <p style={{ color: 'var(--neon-gold)', fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center' }}>Prototype Maxed Out</p>
-                  }
-                </div>
-              </div>
-
-              {/* BACK OF CARD */}
-              <div className="card-back card" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', padding: '1.5rem', background: 'var(--hub-card-bg)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', border: '1px solid var(--neon-purple)', display: 'flex', flexDirection: 'column', transform: 'rotateY(180deg)', backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', boxShadow: 'inset 0 0 10px rgba(192, 132, 252, 0.1)' }}>
-                <h3 style={{ fontSize: '1.25rem', color: 'var(--neon-gold)', marginBottom: '0.5rem' }}>Scarcity Auction</h3>
-                <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem' }}>Set your markup and occupy multiple slots.</p>
-
-                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem' }}>
-                    <label style={{ fontSize: '0.7rem', color: 'var(--hub-text-muted)', textTransform: 'uppercase' }}>Target Selling Price (ETB)</label>
-                    <input
-                      type="number"
-                      value={markupPrices[product.id] || ''}
-                      onChange={(e) => setMarkupPrices(prev => ({ ...prev, [product.id]: e.target.value }))}
-                      placeholder={`> ${product.base_price}`}
-                      style={{ background: 'transparent', border: 'none', borderBottom: '2px solid var(--neon-purple)', color: 'white', fontSize: '1.2rem', padding: '0.4rem 0', outline: 'none', fontWeight: 'bold', width: '100%' }}
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--hub-text-muted)', textTransform: 'uppercase' }}>Slots to Claim</label>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--neon-gold)' }}>Available: {product.remaining_slots}</span>
-                    </div>
-                    <input
-                      type="number"
-                      min="1"
-                      max={product.remaining_slots}
-                      value={slotCounts[product.id] || 1}
-                      onChange={(e) => setSlotCounts(prev => ({ ...prev, [product.id]: Math.min(product.remaining_slots, Math.max(1, parseInt(e.target.value) || 1)) }))}
-                      style={{ background: 'transparent', border: 'none', borderBottom: '2px solid var(--neon-gold)', color: 'white', fontSize: '1.2rem', padding: '0.4rem 0', outline: 'none', fontWeight: 'bold', width: '100%' }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', marginTop: '0.5rem' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--hub-text-muted)' }}>Total Required Power:</span>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--neon-green)', fontWeight: 'bold' }}>{((parseFloat(product.base_price)) * (slotCounts[product.id] || 1)).toFixed(0)} ETB</span>
-                </div>
-
-                <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  <button
-                    className="hub-btn hub-btn-neon"
-                    style={{ width: '100%' }}
-                    onClick={() => handleJuggle(product.id)}
-                    disabled={!markupPrices[product.id] || Number(markupPrices[product.id]) <= Number(product.base_price)}
-                  >
-                    Confirm Juggle
-                  </button>
-                  <button
-                    className="hub-btn"
-                    style={{ width: '100%', borderColor: 'rgba(255,255,255,0.2)', color: 'var(--hub-text-muted)' }}
-                    onClick={() => setFlippedCardId(null)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-
+          <React.Fragment key={product.id}>
+            <div className={`market-row ${isFlipped ? 'market-row-open' : ''} ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : '')}`}>
+              <div className="market-asset"><button className={`market-watch ${isWatched ? 'market-watch-active' : ''}`} onClick={() => toggleWatchlist(product.id)} aria-label={`${isWatched ? 'Remove' : 'Add'} ${product.name} ${isWatched ? 'from' : 'to'} watchlist`}><Bookmark size={14} fill={isWatched ? 'currentColor' : 'none'} /></button><span className="asset-mark">{product.name.slice(0, 1)}</span><div><strong>{product.name}</strong><small>{product.brand || product.category_name || 'Market asset'}</small></div></div>
+              <div className="market-stat"><span>Base price</span><strong>{Number(product.base_price).toLocaleString()} ETB</strong><small>Same-item avg —</small></div>
+              <div className="market-stat"><span>Fill rate</span><strong>{fillRate}%</strong><div className="row-progress"><i style={{ width: `${fillRate}%` }} /></div></div>
+              <div className="market-stat"><span>Slots</span><strong>{product.remaining_slots ?? 0}<small> / {product.stock ?? '—'}</small></strong><small>{product.remaining_slots > 0 ? 'Available' : 'Full'}</small></div>
+              <div className="market-status"><span className={canJuggle && product.remaining_slots > 0 ? 'status-live' : 'status-muted'}><i /> {product.remaining_slots <= 0 ? 'Full' : canJuggle ? 'Ready' : 'Low power'}</span><button className="market-action" onClick={() => setFlippedCardId(isFlipped ? null : product.id)} disabled={!canJuggle || product.remaining_slots <= 0}>{isFlipped ? 'Close' : 'Set price'}</button></div>
             </div>
-          </div>
+            {isFlipped && <div className="market-order-panel">
+              <div><span className="hub-label">Open position</span><h3>{product.name}</h3><p>Set a listing price above the base price and reserve your slots.</p></div>
+              <label>Listing price<input type="number" value={markupPrices[product.id] || ''} onChange={(e) => setMarkupPrices(prev => ({ ...prev, [product.id]: e.target.value }))} placeholder={`Above ${product.base_price} ETB`} /></label>
+              <label>Slots<select value={slotCounts[product.id] || 1} onChange={(e) => setSlotCounts(prev => ({ ...prev, [product.id]: Math.min(product.remaining_slots, Math.max(1, parseInt(e.target.value) || 1)) }))}>{Array.from({ length: Math.min(product.remaining_slots || 1, 10) }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1} slot{i ? 's' : ''}</option>)}</select></label>
+              <div className="order-power"><span>Power required</span><strong>{((parseFloat(product.base_price)) * (slotCounts[product.id] || 1)).toFixed(0)} ETB</strong><button className="market-action market-action-primary" onClick={() => handleJuggle(product.id)} disabled={!markupPrices[product.id] || Number(markupPrices[product.id]) <= Number(product.base_price)}>Confirm listing</button></div>
+            </div>}
+          </React.Fragment>
         );
       })
     : Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={`skeleton-${i}`} />);
 
+  const visiblePrices = filteredProducts.map(product => Number(product.base_price) || 0).filter(Boolean);
+  const feedAveragePrice = visiblePrices.length
+    ? visiblePrices.reduce((sum, price) => sum + price, 0) / visiblePrices.length
+    : 0;
+  const affordableCount = filteredProducts.filter(product => user.current_cb >= product.base_price).length;
+  const nextTierTarget = user.pyramid_tier === 100 ? 5 : 10;
+  const tierProgress = Math.min(100, (user.deals_completed / nextTierTarget) * 100);
+  const marketSeries = visiblePrices.slice(0, 7);
+  const seriesMin = marketSeries.length ? Math.min(...marketSeries) : 0;
+  const seriesMax = marketSeries.length ? Math.max(...marketSeries) : 1;
+  const chartPoints = marketSeries.map((price, index) => {
+    const x = marketSeries.length === 1 ? 8 : (index / (marketSeries.length - 1)) * 84 + 8;
+    const y = 76 - ((price - seriesMin) / Math.max(1, seriesMax - seriesMin)) * 48;
+    return `${x},${y}`;
+  }).join(' ');
+
   return (
     <div className="juggler-hub" style={{ display: 'flex', padding: 0 }}>
       <HubSidebar />
-      <div style={{ marginLeft: '220px', flex: 1, padding: '2rem' }}>
+      <div className="hub-main" style={{ marginLeft: '220px', flex: 1, padding: '2rem' }}>
         <div className="hub-container">
-
-
-          {/* Dashboard Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem', marginBottom: '3rem' }}>
-            <div className="hub-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: '4px solid var(--neon-green)' }}>
-              <div>
-                <p className="text-muted" style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Actual Balance (Safe)</p>
-                <h2 style={{ color: 'var(--neon-green)', fontSize: '2.5rem', margin: '0.5rem 0' }}>{user.actual_balance} ETB</h2>
-                <p style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)' }}><ShieldCheck size={14} style={{ display: 'inline', verticalAlign: 'text-bottom' }} /> Never risked, never touched.</p>
-              </div>
+          <section className="hub-market-header">
+            <div>
+              <div className="hub-eyebrow"><span className="live-dot" /> JUGGLE MARKET · LIVE</div>
+              <h1>Keep the market moving.</h1>
+              <p>Set your price, reserve your slots, and watch every cycle change the opportunity.</p>
             </div>
+            <div className="hub-cycle"><span>Next cycle</span><strong>{formatTime(timeLeft)}</strong><small>Power refreshes automatically</small></div>
+          </section>
 
-            <div className="hub-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', borderLeft: '4px solid var(--neon-purple)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p className="text-muted" style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Current Balance</p>
-                  <h2 style={{ color: 'var(--neon-purple)', fontSize: '2.5rem', margin: '0.5rem 0' }}>{Math.floor(user.current_cb)} ETB</h2>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--neon-gold)', margin: 0, fontWeight: 'bold' }}>
-                    RESET: {formatTime(timeLeft)}
-                  </p>
-                  {pyr.is_winner && <Crown size={20} className="neon-pulse" style={{ color: 'var(--neon-gold)', marginTop: '4px' }} />}
-                </div>
-              </div>
+          <section className="hub-kpi-grid" aria-label="Market overview">
+            <div className="hub-kpi hub-kpi-accent"><span>Available power</span><strong>{Math.floor(user.current_cb).toLocaleString()} <small>ETB</small></strong><em><Zap size={13} /> {pyr.pulse_active ? 'Active pulse' : 'Idle power'}</em></div>
+            <div className="hub-kpi"><span>Protected balance</span><strong>{Number(user.actual_balance || 0).toLocaleString()} <small>ETB</small></strong><em><ShieldCheck size={13} /> Safe balance</em></div>
+            <div className="hub-kpi"><span>Current tier</span><strong>{user.pyramid_tier}<small> tier</small></strong><em>{user.deals_completed} completed deals</em></div>
+            <div className="hub-kpi"><span>Market opportunities</span><strong>{affordableCount}<small> ready</small></strong><em>{filteredProducts.length} products in feed</em></div>
+          </section>
 
-              <div style={{ display: 'flex', gap: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--hub-text-muted)', textTransform: 'uppercase' }}>
-                  <Layers size={14} />
-                  CUBE {pyr.phase + 1}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: 'var(--hub-text-muted)', textTransform: 'uppercase' }}>
-                  <Pin size={14} />
-                  BASE {pyr.user_rank}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.7rem', color: pyr.pulse_active ? 'var(--neon-blue)' : 'var(--hub-text-muted)', textTransform: 'uppercase' }}>
-                  <Zap size={14} />
-                  {pyr.pulse_active ? 'ACTIVE PULSE' : 'IDLE POWER'}
-                </div>
+          <section className="hub-market-grid">
+            <div className="hub-chart-card">
+              <div className="hub-card-heading"><div><span className="hub-label">Market pulse</span><h2>Feed price curve</h2></div><span className="hub-live-chip"><i /> Live feed</span></div>
+              <div className="hub-chart-meta"><div><strong>{feedAveragePrice ? `${Math.round(feedAveragePrice).toLocaleString()} ETB` : '—'}</strong><span>Average base price</span></div><div><strong>{filteredProducts.length}</strong><span>Tracked items</span></div><div><strong>{pyr.phase ? `#${pyr.phase + 1}` : '—'}</strong><span>Market cycle</span></div></div>
+              <div className="hub-chart-wrap">
+                {marketSeries.length > 1 ? <svg viewBox="0 0 100 90" role="img" aria-label="Current feed price curve" preserveAspectRatio="none"><defs><linearGradient id="hubArea" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#72f6c1" stopOpacity=".3" /><stop offset="100%" stopColor="#72f6c1" stopOpacity="0" /></linearGradient></defs><path className="hub-chart-area" d={`M ${chartPoints} L 92,86 L 8,86 Z`} /><polyline className="hub-chart-line" points={chartPoints} /><line className="hub-chart-baseline" x1="8" y1="76" x2="92" y2="76" /></svg> : <div className="hub-chart-empty">Feed data will draw here as products enter the market.</div>}
+                <div className="hub-chart-axis"><span>Low</span><span>Current feed</span><span>High</span></div>
               </div>
+              <p className="hub-chart-note">This is the current product feed range. Same-item average pricing appears once multiple jugglers list the item.</p>
             </div>
-
-            <div className="hub-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', borderLeft: '4px solid var(--neon-blue)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <div>
-                  <p className="text-muted" style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pyramid Tier</p>
-                  <h2 style={{ color: 'var(--neon-blue)', fontSize: '2.5rem', margin: '0.5rem 0' }}>{user.pyramid_tier} <span style={{ fontSize: '1rem', opacity: 0.5 }}>TIER</span></h2>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.6)', margin: 0 }}>
-                    DEALS: <strong>{user.deals_completed}</strong>
-                  </p>
-                  <div style={{ marginTop: '8px' }}>
-                    <ShieldCheck size={20} color={user.pyramid_tier >= 500 ? 'var(--neon-blue)' : 'rgba(255,255,255,0.1)'} />
-                  </div>
-                </div>
-              </div>
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem' }}>
-                {user.pyramid_tier < 1000 ? (
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', marginBottom: '4px' }}>
-                      <span className="text-muted">NEXT UNLOCK: {user.pyramid_tier === 100 ? '500 Tier' : '1000 Tier'}</span>
-                      <span style={{ color: 'var(--neon-blue)' }}>{user.deals_completed}/{user.pyramid_tier === 100 ? 5 : 10} DEALS</span>
-                    </div>
-                    <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.05)', borderRadius: '2px', overflow: 'hidden' }}>
-                      <div style={{ 
-                        width: `${Math.min(100, (user.deals_completed / (user.pyramid_tier === 100 ? 5 : 10)) * 100)}%`, 
-                        height: '100%', 
-                        background: 'var(--neon-blue)',
-                        boxShadow: '0 0 10px var(--neon-blue)'
-                      }} />
-                    </div>
-                  </div>
-                ) : (
-                  <div style={{ color: 'var(--neon-gold)', fontSize: '0.75rem', fontWeight: 'bold', letterSpacing: '0.1em' }}>
-                    MAX TIER UNLOCKED // ELITE JUGGLER
-                  </div>
-                )}
-              </div>
+            <div className="hub-signal-card">
+              <div className="hub-card-heading"><div><span className="hub-label">Your position</span><h2>Juggler signals</h2></div><Activity size={18} color="var(--hub-accent)" /></div>
+              <div className="hub-signal-row"><span>Cycle state</span><strong className="signal-positive">{pyr.pulse_active ? 'Active' : 'Quiet'}</strong></div>
+              <div className="hub-signal-row"><span>Power rank</span><strong>Base {pyr.user_rank || '—'}</strong></div>
+              <div className="hub-signal-row"><span>Next tier</span><strong>{user.pyramid_tier < 1000 ? `${nextTierTarget} deals` : 'Max tier'}</strong></div>
+              <div className="hub-progress"><div><span>Tier progress</span><strong>{Math.round(tierProgress)}%</strong></div><div className="hub-progress-track"><i style={{ width: `${tierProgress}%` }} /></div></div>
+              <div className="hub-signal-foot"><Crown size={15} /> {user.pyramid_tier < 1000 ? `${Math.max(0, nextTierTarget - user.deals_completed)} deals to unlock` : 'Maximum tier unlocked'}</div>
             </div>
-          </div>
+          </section>
+
+          <div className="hub-section-heading"><div><span className="hub-label">Opportunity board</span><h2>Find your next juggle</h2></div><span className="hub-count">{filteredProducts.length} available</span></div>
 
           {/* INLINE INTENSE FILTERS */}
           <div style={{
@@ -558,7 +447,7 @@ function JugglerDashboard() {
                     fontWeight: 600,
                     letterSpacing: '0.02em',
                     background: priceFilter === key
-                      ? 'linear-gradient(135deg, var(--neon-purple), var(--neon-blue))'
+                      ? 'linear-gradient(135deg, var(--hub-accent), #b8ffe0)'
                       : 'rgba(255,255,255,0.04)',
                     color: priceFilter === key ? 'white' : 'rgba(255,255,255,0.5)',
                     border: priceFilter === key ? 'none' : '1px solid rgba(255,255,255,0.08)',
@@ -584,7 +473,7 @@ function JugglerDashboard() {
                 border: '1px solid rgba(255,255,255,0.08)',
                 borderRadius: '2rem',
                 padding: '5px 12px',
-                color: brandFilter !== 'all' ? 'var(--neon-purple)' : 'rgba(255,255,255,0.5)',
+                color: brandFilter !== 'all' ? 'var(--hub-accent)' : 'rgba(255,255,255,0.5)',
                 fontSize: '0.7rem',
                 fontWeight: 600,
                 outline: 'none',
@@ -668,7 +557,8 @@ function JugglerDashboard() {
           </div>
 
 
-<div className="grid-products" style={{ paddingBottom: '4rem' }}>
+          <div className="market-table" id="opportunities">
+            <div className="market-table-head"><span>Asset</span><span>Pricing</span><span>Fill rate</span><span>Slots</span><span>Status</span></div>
             {productCards}
           </div>
 

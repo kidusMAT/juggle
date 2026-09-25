@@ -104,6 +104,13 @@ clearcache() {
     print_status "Cache cleared"
 }
 
+# Seed a deployment-scale buyer marketplace for staging/load checks
+seed_market() {
+    print_status "Seeding buyer marketplace..."
+    docker-compose exec backend python manage.py seed_market --count "${2:-3000}"
+    print_status "Buyer marketplace seeded"
+}
+
 # Health check
 health() {
     print_status "Checking health..."
@@ -149,6 +156,7 @@ help() {
     echo "  createsuperuser Create admin superuser"
     echo "  collectstatic  Collect static files"
     echo "  clearcache     Clear Redis cache"
+    echo "  seed-market    Add deployment-scale direct supply and live juggles [count]"
     echo "  health         Check health status"
     echo "  backup         Backup database"
     echo "  restore        Restore database from backup"
@@ -186,6 +194,9 @@ case "$1" in
         ;;
     clearcache)
         clearcache
+        ;;
+    seed-market)
+        seed_market "$@"
         ;;
     health)
         health

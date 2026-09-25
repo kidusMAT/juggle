@@ -33,6 +33,13 @@ function ProductDetailPage() {
       try {
         const res = await api.get(`/products/${id}/`);
         setProduct(res.data);
+        try {
+          const view = { id: res.data.id, brand: res.data.brand || '', category: res.data.category_name || '', viewedAt: Date.now() };
+          const previous = JSON.parse(localStorage.getItem('gobez-recently-viewed') || '[]');
+          const next = [view, ...previous.filter(item => item.id !== res.data.id)].slice(0, 12);
+          localStorage.setItem('gobez-recently-viewed', JSON.stringify(next));
+          window.dispatchEvent(new CustomEvent('gobez-product-viewed'));
+        } catch { /* recommendations are optional */ }
         setSelectedImage(getFullUrl(res.data.image || res.data.image_url));
         
         // Fetch related products (same category)
@@ -81,6 +88,7 @@ function ProductDetailPage() {
         offer_id: 'direct',
         quantity: prodId ? 1 : quantity
       });
+      window.dispatchEvent(new CustomEvent('cart-updated'));
       showNotification(`Added ${targetName} to cart!`, 'success');
     } catch {
       showNotification(`Failed to add ${targetName} to cart.`, 'error');
@@ -103,7 +111,7 @@ function ProductDetailPage() {
   );
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-main)' }}>
+    <div className="buyer-detail-page" style={{ minHeight: '100vh', background: 'var(--bg-main)' }}>
       <Navbar />
       
       <div className="container" style={{ padding: '2rem 1rem' }}>
@@ -111,7 +119,7 @@ function ProductDetailPage() {
           <ChevronLeft size={18} /> Back to Marketplace
         </Link>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) 1fr', gap: '4rem', alignItems: 'start' }}>
+        <div className="buyer-detail-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) 1fr', gap: '4rem', alignItems: 'start' }}>
           {/* LEFT: GALLERY */}
           <div>
             <div style={{ 
@@ -157,9 +165,9 @@ function ProductDetailPage() {
           <div>
             <div style={{ marginBottom: '2rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--neon-purple)', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{product.category_name}</span>
+                <span style={{ fontSize: '0.8rem', color: '#159b6d', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{product.category_name}</span>
                 {product.is_limited && (
-                  <span style={{ background: 'var(--neon-purple)', color: '#fff', fontSize: '0.65rem', fontWeight: '900', padding: '3px 10px', borderRadius: '2rem', boxShadow: '0 0 15px rgba(192, 132, 252, 0.4)' }}>LIMITED EDITION</span>
+                  <span style={{ background: '#111', color: '#fff', fontSize: '0.65rem', fontWeight: '900', padding: '3px 10px', borderRadius: '2rem' }}>LIMITED EDITION</span>
                 )}
               </div>
               <h1 style={{ fontSize: '3.5rem', margin: '0.5rem 0' }}>{product.name}</h1>
@@ -170,6 +178,8 @@ function ProductDetailPage() {
               <span style={{ fontSize: '3rem', fontWeight: '900', color: 'var(--neon-green)' }}>ETB {product.base_price}</span>
               {product.status === 'SOLD' && <span style={{ color: '#ef4444', fontWeight: 'bold' }}>[ SOLD OUT ]</span>}
             </div>
+
+            <div className="buyer-market-stats"><div><span>Market status</span><strong className={product.status === 'SOLD' ? 'market-stat-offline' : ''}>{product.status === 'SOLD' ? 'Sold out' : 'Live'}</strong></div><div><span>Availability</span><strong>{product.stock || '—'} units</strong></div><div><span>Offer type</span><strong>{product.is_limited ? 'Limited drop' : 'Direct supply'}</strong></div></div>
 
             <p style={{ fontSize: '1.1rem', lineHeight: '1.8', color: 'var(--text-secondary)', marginBottom: '2.5rem' }}>
               {product.description || "No description available for this handcrafted masterpiece."}
@@ -250,11 +260,11 @@ function ProductDetailPage() {
           <div style={{ marginTop: '8rem', borderTop: '1px solid #eee', paddingTop: '4rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '3rem' }}>
               <div>
-                <span style={{ color: 'var(--neon-purple)', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.15em' }}>Discovery</span>
+                <span style={{ color: '#159b6d', fontWeight: 'bold', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.15em' }}>More from the market</span>
                 <h2 style={{ fontSize: '2.5rem', marginTop: '0.5rem' }}>You Might Also Like</h2>
               </div>
-              <Link to="/shop" style={{ color: 'var(--text-primary)', fontWeight: '700', textDecoration: 'none', borderBottom: '2px solid var(--neon-purple)', paddingBottom: '2px' }}>
-                View All Prototypes
+              <Link to="/shop" style={{ color: 'var(--text-primary)', fontWeight: '700', textDecoration: 'none', borderBottom: '2px solid #72f6c1', paddingBottom: '2px' }}>
+                Explore live market
               </Link>
             </div>
 
@@ -271,7 +281,7 @@ function ProductDetailPage() {
                         position: 'relative'
                       }}>
                         {p.is_limited && (
-                          <div style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'var(--neon-purple)', color: '#fff', fontSize: '0.6rem', fontWeight: '900', padding: '4px 10px', borderRadius: '4px', boxShadow: '0 4px 10px rgba(192, 132, 252, 0.3)' }}>
+                          <div style={{ position: 'absolute', top: '1rem', right: '1rem', background: '#111', color: '#fff', fontSize: '0.6rem', fontWeight: '900', padding: '4px 10px', borderRadius: '4px' }}>
                             LIMITED
                           </div>
                         )}
@@ -317,14 +327,14 @@ function ProductDetailPage() {
           animation: neon-pulse 1.5s ease-in-out infinite;
         }
         @keyframes neon-pulse {
-          0%, 100% { opacity: 1; text-shadow: 0 0 10px var(--neon-purple); }
-          50% { opacity: 0.5; text-shadow: 0 0 5px var(--neon-purple); }
+          0%, 100% { opacity: 1; text-shadow: 0 0 10px var(--neon-green); }
+          50% { opacity: 0.5; text-shadow: 0 0 5px var(--neon-green); }
         }
 
         .related-product-card:hover .card {
           transform: translateY(-10px);
-          box-shadow: 0 30px 60px rgba(0,0,0,0.12), 0 0 20px rgba(192, 132, 252, 0.1);
-          border-color: var(--neon-purple);
+          box-shadow: 0 30px 60px rgba(0,0,0,0.12), 0 0 20px rgba(114, 246, 193, 0.14);
+          border-color: var(--neon-green);
         }
 
         .quick-add-btn {

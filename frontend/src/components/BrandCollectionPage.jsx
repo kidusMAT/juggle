@@ -16,7 +16,7 @@ export default function BrandCollectionPage() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const res = await api.get(`${API_BASE}/products/buyer_market/`);
+        const res = await api.get(`${API_BASE}/products/buyer_market/?brand=${encodeURIComponent(brandName)}`);
         const allDeals = res.data.results || res.data;
         const filtered = allDeals.filter(deal =>
           deal.product.brand.toLowerCase() === brandName.toLowerCase()
@@ -34,9 +34,9 @@ export default function BrandCollectionPage() {
   const sortedProducts = [...products].sort((a, b) => {
     switch (sortBy) {
       case 'price-low':
-        return a.product.base_price - b.product.base_price;
+        return parseFloat(a.markup_price || a.product.base_price) - parseFloat(b.markup_price || b.product.base_price);
       case 'price-high':
-        return b.product.base_price - a.product.base_price;
+        return parseFloat(b.markup_price || b.product.base_price) - parseFloat(a.markup_price || a.product.base_price);
       case 'name':
         return a.product.name.localeCompare(b.product.name);
       default:
@@ -53,7 +53,7 @@ export default function BrandCollectionPage() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: '#fafafa' }}>
+    <div className="buyer-brand-page" style={{ minHeight: '100vh', background: '#fafafa' }}>
       {/* Header */}
       <div style={{
         background: '#000',
@@ -92,6 +92,7 @@ export default function BrandCollectionPage() {
           <p style={{ margin: 0, fontSize: '1rem', color: '#999', fontWeight: '500' }}>
             {products.length} {products.length === 1 ? 'item' : 'items'} available
           </p>
+          <div className="brand-live-note"><i /> Live collection · prices and availability update with the market</div>
         </div>
       </div>
 
@@ -222,7 +223,7 @@ export default function BrandCollectionPage() {
                   </h3>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '1.25rem', fontWeight: '900', color: '#000' }}>
-                      {formatPrice(deal.product.base_price)}
+                      {formatPrice(deal.markup_price || deal.product.base_price)}
                     </span>
                     {!deal.is_direct && (
                       <span style={{ fontSize: '0.75rem', color: '#888' }}>

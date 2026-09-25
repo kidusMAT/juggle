@@ -148,9 +148,12 @@ function Navbar({
     fetchCartCount();
     fetchNotifications();
     requestNotificationPermission();
+    const handleCartUpdated = () => fetchCartCount();
+    window.addEventListener('cart-updated', handleCartUpdated);
     const interval = setInterval(fetchCartCount, 5000);
     const notifInterval = setInterval(fetchNotifications, 30000);
     return () => {
+      window.removeEventListener('cart-updated', handleCartUpdated);
       clearInterval(interval);
       clearInterval(notifInterval);
     };

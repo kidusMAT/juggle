@@ -122,93 +122,22 @@ function ActiveJuggles() {
   return (
     <div className="juggler-hub" style={{ display: 'flex', padding: 0 }}>
       <HubSidebar />
-      <div style={{ marginLeft: '220px', flex: 1, padding: '2rem' }}>
+      <div className="hub-main" style={{ marginLeft: '220px', flex: 1, padding: '2rem' }}>
         <div className="hub-container">
-          
+          <section className="network-header active-header"><div><div className="hub-eyebrow"><span className="live-dot" /> LIVE POSITIONS · {juggles.length}</div><h1>Your active juggles.</h1><p>Monitor every listing, its power commitment, and the next cycle refresh.</p></div><div className="hub-cycle"><span>Power refresh</span><strong>{formatTime(timeLeft)}</strong><small>{Math.floor(user.current_cb).toLocaleString()} ETB available</small></div></section>
+          <section className="network-kpi-grid active-kpi-grid"><div className="hub-kpi hub-kpi-accent"><span>Open positions</span><strong>{juggles.length}<small> live</small></strong><em>Currently listed</em></div><div className="hub-kpi"><span>Committed power</span><strong>{juggles.reduce((sum, item) => sum + (Number(item.product?.base_price) * Number(item.amount || 1)), 0).toLocaleString()} <small>ETB</small></strong><em>Reserved across listings</em></div><div className="hub-kpi"><span>Completed deals</span><strong>{user.deals_completed || 0}</strong><em>Lifetime activity</em></div><div className="hub-kpi"><span>Cycle status</span><strong className="active-kpi-text">{timeLeft < 60 ? 'Closing' : 'Active'}</strong><em>Auto-refresh enabled</em></div></section>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem', padding: '1rem 1.5rem', background: 'var(--hub-card-bg)', borderRadius: '1rem', border: '1px solid var(--hub-border)' }}>
-            <div>
-              <p className="text-muted" style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Current Power</p>
-              <h2 style={{ color: 'var(--neon-purple)', fontSize: '1.5rem' }}>{Math.floor(user.current_cb)} ETB</h2>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <p className="text-muted" style={{ fontSize: '0.875rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Next Power Reset</p>
-              <h2 style={{ color: 'var(--neon-gold)', fontSize: '1.5rem' }}>{formatTime(timeLeft)}</h2>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '2rem', paddingBottom: '4rem' }}>
+          <div className="active-position-table">
             {juggles.length === 0 ? (
-              <div className="hub-card" style={{ gridColumn: '1/-1', textAlign: 'center', padding: '4rem' }}>
-                <p className="text-muted" style={{ marginBottom: '1rem' }}>No active juggles found.</p>
-                <Link to="/">
-                  <button className="hub-btn hub-btn-neon">Go to Dashboard</button>
-                </Link>
+              <div className="active-empty"><div className="asset-mark">—</div><h2>No active positions</h2><p>Choose an item from the opportunity board to start moving product through the market.</p><Link to="/juggler#opportunities" className="market-action market-action-primary">Find an opportunity</Link>
               </div>
             ) : (
               juggles.map((juggle, idx) => {
                 const product = juggle.product;
                 const isUnderpowered = user.pyramid_data && user.pyramid_data.raw_cb < product.base_price;
-                const bgColor = placeholderColors[idx % placeholderColors.length];
-                const isDark = bgColor === '#1f2937';
 
                 return (
-                  <div key={juggle.id} className={`card card-alive ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : '')}`} style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column', background: 'var(--hub-surface)', border: '1px solid var(--neon-purple)', boxShadow: '0 0 15px rgba(192, 132, 252, 0.1)', opacity: isUnderpowered ? 0.8 : 1 }}>
-                    <div style={{ 
-                      height: '240px', 
-                      background: bgColor,
-                      position: 'relative',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'
-                    }}>
-                      <div className={`badge-timer ${isUnderpowered ? 'badge-live-gold' : 'badge-live'}`} style={{ position: 'absolute', top: '1rem', right: '1rem', background: isUnderpowered ? 'rgba(251, 191, 36, 0.2)' : 'var(--hub-card-bg)', border: `1px solid ${isUnderpowered ? 'var(--neon-gold)' : 'var(--neon-purple)'}`, color: isUnderpowered ? 'var(--neon-gold)' : 'white' }}>
-                        <Clock size={12} style={{ color: isUnderpowered ? 'var(--neon-gold)' : 'var(--neon-purple)' }}/> {formatTime(timeLeft)}
-                      </div>
-                      {isUnderpowered ? (
-                        <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'var(--neon-gold)', color: 'black', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.7rem', fontWeight: 'bold', boxShadow: '0 0 10px rgba(255, 171, 0, 0.5)' }}>
-                          <span className="live-dot-gold"></span> HIDDEN: LOW POWER
-                        </div>
-                      ) : (
-                        <div style={{ position: 'absolute', top: '1rem', left: '1rem', background: 'var(--neon-green)', color: 'black', padding: '0.2rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                          <span className="live-dot"></span> LIVE ON SITE A
-                        </div>
-                      )}
-                      <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2L15 8L22 9L17 14L18 21L12 17.5L6 21L7 14L2 9L9 8L12 2Z" opacity="0.5"/>
-                      </svg>
-                    </div>
-
-                    <div style={{ padding: '1.5rem', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                      <h3 style={{ fontSize: '1.1rem', marginBottom: '0.25rem', color: 'var(--hub-text-main)' }}>{product.name}</h3>
-                      <p className="text-muted" style={{ fontSize: '0.85rem', marginBottom: '1.5rem', color: 'var(--hub-text-muted)' }}>{product.description}</p>
-                      
-                      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem', background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '0.5rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                          <span style={{ color: 'var(--hub-text-muted)' }}>Base Power:</span>
-                          <span style={{ color: 'var(--hub-text-main)' }}>{product.base_price} ETB</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1rem', fontWeight: 'bold' }}>
-                          <span style={{ color: 'var(--neon-green)' }}>Your Listing:</span>
-                          <span style={{ color: 'var(--neon-green)' }}>{juggle.markup_price} ETB</span>
-                        </div>
-                      </div>
-                      
-                      <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-                        <button className="hub-btn" style={{ flex: 1, background: isUnderpowered ? 'rgba(255, 171, 0, 0.1)' : 'rgba(34, 197, 94, 0.1)', borderColor: isUnderpowered ? 'var(--neon-gold)' : 'var(--neon-green)', color: isUnderpowered ? 'var(--neon-gold)' : 'var(--neon-green)', fontSize: '0.8rem' }} disabled>
-                          {isUnderpowered ? 'Underpowered' : 'Competing'}
-                        </button>
-                        <button 
-                          className="hub-btn" 
-                          style={{ flex: 1, borderColor: '#ef4444', color: '#ef4444', fontSize: '0.8rem' }}
-                          onClick={() => handleCancel(juggle.id)}
-                        >
-                          Cancel Deal
-                        </button>
-                      </div>
-                    </div>
-                  </div>
+                  <div key={juggle.id} className={`active-position-row ${isUnderpowered ? 'position-underpowered' : ''} ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : '')}`}><div className="market-asset"><span className="asset-mark">{product.name.slice(0, 1)}</span><div><strong>{product.name}</strong><small>{product.brand || 'Market asset'}</small></div></div><div className="market-stat"><span>Your listing</span><strong>{Number(juggle.markup_price).toLocaleString()} ETB</strong><small>Base {Number(product.base_price).toLocaleString()} ETB</small></div><div className="market-stat"><span>Power</span><strong>{(Number(product.base_price) * Number(juggle.amount || 1)).toLocaleString()} ETB</strong><small>{juggle.amount || 1} slot(s)</small></div><div className="market-stat"><span>Cycle</span><strong className="active-time"><Clock size={13} /> {formatTime(timeLeft)}</strong><small>{isUnderpowered ? 'Needs power' : 'Live listing'}</small></div><div className="active-row-actions"><span className={isUnderpowered ? 'status-warning' : 'status-live'}><i /> {isUnderpowered ? 'Underpowered' : 'Active'}</span><button className="market-action market-action-danger" onClick={() => handleCancel(juggle.id)}>Cancel</button></div></div>
                 );
               })
             )}
