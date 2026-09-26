@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, SlidersHorizontal, User, ShoppingBag, Package, X, Zap, LogOut, Shield, AlertCircle, Bell, Award, MessageCircle } from 'lucide-react';
+import { Search, SlidersHorizontal, User, ShoppingBag, Package, X, Zap, LogOut, Shield, AlertCircle, Bell, Award, MessageCircle, Menu } from 'lucide-react';
 import api from '../api';
 import { useAuth } from '../AuthContext';
 
@@ -40,6 +40,7 @@ function Navbar({
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const notifRef = useRef(null);
 
   const fetchCartCount = async () => {
@@ -196,8 +197,8 @@ function Navbar({
   return (
     <>
       {/* Spacer so content doesn't jump under fixed nav */}
-      <div style={{ height: '64px', marginBottom: '1rem' }} />
-      <nav style={{
+      <div className="global-navbar-spacer" style={{ height: '64px', marginBottom: '1rem' }} />
+      <nav className="global-navbar" style={{
         background: 'white',
         borderRadius: '2rem',
         padding: '0.75rem 1.5rem',
@@ -214,7 +215,7 @@ function Navbar({
         transition: 'top 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease',
       }}>
         {/* Top Row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="global-navbar-inner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           {/* Logo */}
           <Link to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
             <div style={{ fontSize: '1.5rem', fontWeight: '900', letterSpacing: '-0.05em', cursor: 'pointer' }}>
@@ -223,14 +224,16 @@ function Navbar({
           </Link>
 
           {/* Search Bar */}
-          <div style={{
+          <div className="global-navbar-search" style={{
             display: 'flex',
             alignItems: 'center',
             background: 'var(--accent-muted)',
             borderRadius: '2rem',
             padding: '0.5rem 1rem',
-            width: '400px',
-            maxWidth: '50vw'
+            width: '100%',
+            maxWidth: '500px',
+            flex: '1 1 auto',
+            minWidth: 0
           }}>
             <Search size={18} color="var(--text-secondary)" />
             <input
@@ -251,6 +254,7 @@ function Navbar({
             />
             {hasFilters ? (
               <div
+                className="navbar-search-filter-btn"
                 onClick={() => setFiltersOpen(!filtersOpen)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', flexShrink: 0,
@@ -280,21 +284,21 @@ function Navbar({
           </div>
 
           {/* Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-            <button className="btn-black" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }} onClick={handleJuggleClick}>
+          <div className="global-navbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
+            <button className="btn-black nav-desktop-item" style={{ padding: '0.5rem 1.25rem', fontSize: '0.85rem' }} onClick={handleJuggleClick}>
               JUGGLE
             </button>
-            <Link to="/leaderboard" style={{ color: 'inherit' }}>
+            <Link to="/leaderboard" className="nav-desktop-item" style={{ color: 'inherit' }}>
               <Award size={22} style={{ cursor: 'pointer' }} title="Leaderboard" />
             </Link>
-            <Link to="/chat" style={{ color: 'inherit' }}>
+            <Link to="/chat" className="nav-desktop-item" style={{ color: 'inherit' }}>
               <MessageCircle size={22} style={{ cursor: 'pointer' }} title="Messages" />
             </Link>
-            <Link to="/seller" style={{ color: 'inherit' }}>
+            <Link to="/seller" className="nav-desktop-item" style={{ color: 'inherit' }}>
               <Package size={22} style={{ cursor: 'pointer' }} title="Seller Dashboard" />
             </Link>
             {userData?.is_staff && (
-              <Link to="/admin" style={{ color: 'var(--neon-purple)' }}>
+              <Link to="/admin" className="nav-desktop-item" style={{ color: 'var(--neon-purple)' }}>
                 <Shield size={22} style={{ cursor: 'pointer' }} title="Admin Dashboard" />
               </Link>
             )}
@@ -310,7 +314,7 @@ function Navbar({
               )}
             </Link>
 
-            <div ref={notifRef} style={{ position: 'relative' }}>
+            <div ref={notifRef} className="nav-desktop-item" style={{ position: 'relative' }}>
               <div
                 onClick={() => setShowNotifications(!showNotifications)}
                 style={{ color: 'inherit', position: 'relative', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
@@ -384,7 +388,7 @@ function Navbar({
               )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div className="nav-desktop-item" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <Link to="/account" style={{ color: 'inherit', display: 'flex', alignItems: 'center' }}>
                 <User size={22} style={{ cursor: 'pointer' }} title="My Account" />
               </Link>
@@ -402,18 +406,88 @@ function Navbar({
                 </Link>
               )}
             </div>
+
+            <Link to="/account" className="nav-mobile-user" style={{ color: 'inherit', display: 'none', alignItems: 'center' }}>
+              <User size={22} />
+            </Link>
+
+            <button
+              className="nav-mobile-toggle"
+              onClick={() => setMobileMenuOpen(prev => !prev)}
+              aria-label="Toggle navigation menu"
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'none',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#000',
+                padding: '4px'
+              }}
+            >
+              {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
           </div>
         </div>
 
+        {/* Mobile Navigation Drawer */}
+        {mobileMenuOpen && (
+          <div className="nav-mobile-menu">
+            <button className="btn-black" style={{ width: '100%', padding: '0.65rem', marginBottom: '0.75rem', fontSize: '0.85rem', fontWeight: '900', borderRadius: '0.75rem' }} onClick={() => { setMobileMenuOpen(false); handleJuggleClick(); }}>
+              ⚡ START A JUGGLE
+            </button>
+            <div className="nav-mobile-links">
+              <Link to="/brands" onClick={() => setMobileMenuOpen(false)} className="nav-mobile-link">
+                <Package size={17} />
+                <span>Browse All Brands</span>
+              </Link>
+              <Link to="/leaderboard" onClick={() => setMobileMenuOpen(false)} className="nav-mobile-link">
+                <Award size={17} />
+                <span>Leaderboard</span>
+              </Link>
+              <Link to="/chat" onClick={() => setMobileMenuOpen(false)} className="nav-mobile-link">
+                <MessageCircle size={17} />
+                <span>Messages</span>
+              </Link>
+              <Link to="/seller" onClick={() => setMobileMenuOpen(false)} className="nav-mobile-link">
+                <Package size={17} />
+                <span>Seller Dashboard</span>
+              </Link>
+              {userData?.is_staff && (
+                <Link to="/admin" onClick={() => setMobileMenuOpen(false)} className="nav-mobile-link" style={{ color: 'var(--neon-purple)' }}>
+                  <Shield size={17} />
+                  <span>Admin Dashboard</span>
+                </Link>
+              )}
+              {authStatus === 'authenticated' ? (
+                <div
+                  onClick={() => { setMobileMenuOpen(false); setShowLogoutConfirm(true); }}
+                  className="nav-mobile-link nav-mobile-logout"
+                  style={{ cursor: 'pointer', color: '#ff4d4f' }}
+                >
+                  <LogOut size={17} />
+                  <span>Logout</span>
+                </div>
+              ) : (
+                <Link to="/account" onClick={() => setMobileMenuOpen(false)} className="nav-mobile-link" style={{ color: 'var(--neon-purple)', fontWeight: 'bold' }}>
+                  <User size={17} />
+                  <span>Login / Register</span>
+                </Link>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Dense Filter Panel — drops down centered */}
         {filtersOpen && hasFilters && (
-          <div style={{
+          <div className="navbar-filter-panel" style={{
             position: 'absolute',
             top: '100%',
             left: '50%',
             transform: 'translateX(-50%)',
-            width: '680px',
-            maxWidth: '90vw',
+            width: '100%',
+            maxWidth: '680px',
             background: 'white',
             borderRadius: '1rem',
             boxShadow: '0 12px 40px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)',
@@ -528,7 +602,7 @@ function Navbar({
             </div>
 
             {/* Row 3: Price Range */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Price</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <input

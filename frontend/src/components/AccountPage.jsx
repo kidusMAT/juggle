@@ -170,10 +170,10 @@ function AccountPage() {
   // LOGIN VIEW (If not authenticated)
   if (!userData) {
     return (
-      <div className="container" style={{ padding: '2rem', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="container account-page-container">
         <Navbar />
-        <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 0' }}>
-          <div className="card-neo" style={{ maxWidth: '450px', width: '100%' }}>
+        <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1.5rem 0' }}>
+          <div className="card-neo account-login-card" style={{ maxWidth: '450px', width: '100%' }}>
             <header style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
               <div style={{ width: '60px', height: '60px', borderRadius: '1.5rem', background: 'var(--neon-purple)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem', boxShadow: '0 0 20px rgba(192, 132, 252, 0.3)' }}>
                 <LogIn size={30} color="#000" />
@@ -232,40 +232,36 @@ function AccountPage() {
 
   // AUTHENTICATED VIEW WITH SIDEBAR
   return (
-    <div className="container" style={{ padding: '2rem', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="container account-page-container">
       <Navbar />
 
-      <div style={{ display: 'flex', flex: 1, gap: '2rem', marginTop: '2rem', overflow: 'hidden' }}>
+      <div className="account-layout">
         
         {/* SIDEBAR */}
-        <aside style={{ 
-          width: '320px', 
-          background: 'rgba(255,255,255,0.02)', 
-          border: '1px solid rgba(255,255,255,0.05)', 
-          borderRadius: '1.5rem',
-          padding: '1.5rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '2rem',
-          height: '100%',
-          overflowY: 'auto'
-        }}>
+        <aside className="account-sidebar">
           {/* User Profile Summary */}
-          <div style={{ textAlign: 'center', padding: '1rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ 
-              width: '80px', height: '80px', borderRadius: '50%', background: 'linear-gradient(135deg, var(--neon-purple), var(--neon-green))', 
-              margin: '0 auto 1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgba(255,255,255,0.1)' 
-            }}>
-              <User size={40} color="#000" />
+          <div className="account-profile-summary">
+            <div className="account-profile-avatar">
+              <User size={36} color="#000" />
             </div>
-            <h3 style={{ margin: 0, fontSize: '1.2rem' }}>{userData.username}</h3>
-            <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
-              {userData.is_juggler ? 'Master Juggler' : 'Market Buyer'}
-            </p>
+            <div className="account-profile-meta">
+              <h3 style={{ margin: 0, fontSize: '1.2rem' }}>{userData.username}</h3>
+              <p className="text-muted" style={{ fontSize: '0.8rem', marginTop: '0.25rem', margin: 0 }}>
+                {userData.is_juggler ? 'Master Juggler' : 'Market Buyer'}
+              </p>
+            </div>
+            <button 
+              onClick={() => setShowLogoutConfirm(true)}
+              className="account-mobile-logout-btn"
+              title="Logout"
+              aria-label="Logout"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
 
           {/* Nav Items */}
-          <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <nav className="account-nav">
             <SidebarItem 
               icon={<LayoutDashboard size={18} />} 
               label="Dashboard" 
@@ -292,7 +288,7 @@ function AccountPage() {
             />
             
             {!userData.is_juggler && (
-              <div style={{ marginTop: '1rem' }}>
+              <div className="account-juggler-cta" style={{ marginTop: '1rem' }}>
                 <div style={{ 
                   fontSize: '0.7rem', color: '#999', marginBottom: '0.5rem', 
                   textAlign: 'center', lineHeight: '1.3' 
@@ -317,7 +313,7 @@ function AccountPage() {
           </nav>
 
           {/* Bottom Actions */}
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
+          <div className="account-desktop-logout" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
             <button 
               onClick={() => setShowLogoutConfirm(true)}
               style={{ 
@@ -566,7 +562,7 @@ function AccountPage() {
         )}
 
         {/* CONTENT AREA */}
-        <main style={{ flex: 1, overflowY: 'auto', paddingRight: '1rem' }}>
+        <main className="account-main-content">
           {activeTab === 'dashboard' && <DashboardTab userData={userData} onDeposit={() => { setPaymentStep('input'); setShowDepositModal(true); }} onWithdraw={() => { setPaymentStep('input'); setShowWithdrawModal(true); }} />}
           {activeTab === 'orders' && <OrdersTab />}
           {activeTab === 'transactions' && <TransactionsTab />}
@@ -584,18 +580,11 @@ function SidebarItem({ icon, label, active, onClick }) {
   return (
     <button 
       onClick={onClick}
-      style={{
-        display: 'flex', alignItems: 'center', gap: '0.75rem',
-        width: '100%', padding: '0.75rem 1rem', borderRadius: '0.75rem',
-        background: active ? 'rgba(255,255,255,0.05)' : 'transparent',
-        border: 'none', color: active ? 'var(--neon-green)' : '#aaa',
-        cursor: 'pointer', transition: 'all 0.2s', fontWeight: active ? '700' : '500',
-        fontSize: '0.9rem'
-      }}
+      className={`account-nav-item ${active ? 'active' : ''}`}
     >
       {icon}
       <span style={{ flex: 1, textAlign: 'left' }}>{label}</span>
-      {active && <div style={{ width: '4px', height: '4px', borderRadius: '50%', background: 'var(--neon-green)' }} />}
+      {active && <div className="account-nav-dot" />}
     </button>
   );
 }
@@ -603,12 +592,12 @@ function SidebarItem({ icon, label, active, onClick }) {
 function DashboardTab({ userData, onDeposit, onWithdraw }) {
   return (
     <div style={{ animation: 'fadeIn 0.3s ease-out' }}>
-      <h2 style={{ fontSize: '2rem', marginBottom: '2rem', letterSpacing: '-0.02em' }}>Dashboard Overview</h2>
+      <h2 className="account-tab-title">Dashboard Overview</h2>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
-        <div className="card" style={{ padding: '2rem', background: 'linear-gradient(135deg, rgba(82, 255, 168, 0.05), transparent)', border: '1px solid rgba(82, 255, 168, 0.1)' }}>
+      <div className="account-balance-grid">
+        <div className="card account-balance-card" style={{ padding: '2rem', background: 'linear-gradient(135deg, rgba(82, 255, 168, 0.05), transparent)', border: '1px solid rgba(82, 255, 168, 0.1)' }}>
           <p className="text-muted" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: '700', letterSpacing: '0.1em' }}>Actual Balance</p>
-          <h3 style={{ fontSize: '3rem', margin: '0.5rem 0', color: 'var(--neon-green)' }}>ETB {userData.actual_balance}</h3>
+          <h3 className="account-balance-val" style={{ fontSize: '3rem', margin: '0.5rem 0', color: 'var(--neon-green)' }}>ETB {userData.actual_balance}</h3>
           <p style={{ fontSize: '0.85rem', color: '#aaa', marginBottom: '1rem' }}>Withdraw anytime to your TeleBirr</p>
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             <button onClick={onDeposit} style={{ flex: 1, padding: '0.75rem', borderRadius: '0.75rem', background: 'var(--neon-green)', color: '#000', border: 'none', fontWeight: '700', fontSize: '0.85rem', cursor: 'pointer' }}>+ DEPOSIT</button>
@@ -616,9 +605,9 @@ function DashboardTab({ userData, onDeposit, onWithdraw }) {
           </div>
         </div>
 
-        <div className="card" style={{ padding: '2rem', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.05), transparent)', border: '1px solid rgba(168, 85, 247, 0.1)' }}>
+        <div className="card account-balance-card" style={{ padding: '2rem', background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.05), transparent)', border: '1px solid rgba(168, 85, 247, 0.1)' }}>
           <p className="text-muted" style={{ textTransform: 'uppercase', fontSize: '0.75rem', fontWeight: '700', letterSpacing: '0.1em' }}>Virtual Current Balance</p>
-          <h3 style={{ fontSize: '3rem', margin: '0.5rem 0', color: 'var(--neon-purple)', fontFamily: 'monospace' }}>{Math.floor(userData.current_cb)} <span style={{fontSize: '1rem'}}>CB</span></h3>
+          <h3 className="account-balance-val" style={{ fontSize: '3rem', margin: '0.5rem 0', color: 'var(--neon-purple)', fontFamily: 'monospace' }}>{Math.floor(userData.current_cb)} <span style={{fontSize: '1rem'}}>CB</span></h3>
           <p style={{ fontSize: '0.85rem', color: '#aaa' }}>Fluctuates every 5 minutes</p>
         </div>
       </div>
@@ -694,8 +683,8 @@ function TransactionsTab() {
           <p className="text-muted">No transactions yet</p>
         </div>
       ) : (
-        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="card account-table-wrapper" style={{ padding: '0', overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: '540px', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                 <th style={{ padding: '1rem', textAlign: 'left', fontSize: '0.8rem', color: '#666' }}>TYPE</th>
@@ -897,9 +886,9 @@ function SettingsTab({ userData }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         {/* Profile Info */}
-        <form onSubmit={handleUpdateProfile} className="card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <form onSubmit={handleUpdateProfile} className="card account-settings-card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Personal Information</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+          <div className="account-form-grid">
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', fontWeight: '700', marginBottom: '0.5rem' }}>USERNAME</label>
               <input 
@@ -921,7 +910,7 @@ function SettingsTab({ userData }) {
           </div>
 
           <h3 style={{ fontSize: '1.2rem', marginTop: '1rem', marginBottom: '0.5rem' }}>Seller Information</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+          <div className="account-form-grid">
             <div>
               <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', fontWeight: '700', marginBottom: '0.5rem' }}>FULL NAME</label>
               <input 
@@ -966,7 +955,7 @@ function SettingsTab({ userData }) {
         </form>
 
         {/* Change Password */}
-        <form onSubmit={handleChangePassword} className="card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <form onSubmit={handleChangePassword} className="card account-settings-card" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <h3 style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>Security</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
             <div>
@@ -978,7 +967,7 @@ function SettingsTab({ userData }) {
                 style={{ width: '100%', padding: '0.75rem', background: '#fff', border: '1px solid rgba(0,0,0,0.2)', borderRadius: '0.5rem', color: '#000', outline: 'none' }} 
               />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+            <div className="account-form-grid">
               <div>
                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#666', fontWeight: '700', marginBottom: '0.5rem' }}>NEW PASSWORD</label>
                 <input 

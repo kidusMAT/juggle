@@ -1637,10 +1637,19 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         conversation_id = self.request.query_params.get('conversation')
-        queryset = Message.objects.filter(conversation__participants=self.request.user)
         if conversation_id:
-            queryset = queryset.filter(conversation_id=conversation_id)
-        return queryset
+            # Check if user is participant in this specific conversation
+            conversation = Conversation.objects.filter(
+                id=conversation_id,
+                participants=self.request.user
+            ).first()
+            if not conversation:
+                # Return empty queryset but the view will return 200 with empty list
+                # For security, we want to return 404/403 - so raise PermissionDenied
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Conversation not found")
+            return Message.objects.filter(conversation=conversation)
+        return Message.objects.filter(conversation__participants=self.request.user)
 
     def perform_create(self, serializer):
         conversation = serializer.validated_data['conversation']
@@ -1652,6 +1661,7 @@ class MessageViewSet(viewsets.ModelViewSet):
 class DeliveryTrackingViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = DeliveryTrackingSerializer
+    pagination_class = None
 
     def get_queryset(self):
         user = self.request.user

@@ -127,7 +127,7 @@ function CartPage() {
             <span>{juggleCount > 0 ? `${juggleCount} live offer${juggleCount === 1 ? '' : 's'} locked` : 'Direct supply selected'}</span>
           </div>
 
-          <div className="buyer-cart-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 350px', gap: '3rem' }}>
+          <div className="buyer-cart-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '1.5rem' }}>
             {/* List */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
               <div className="cart-list-heading"><div><span>Your selection</span><strong>Ready to check out</strong></div><span>{juggleCount > 0 && `${juggleCount} Juggle · `}{directCount > 0 && `${directCount} Direct`}</span></div>
@@ -228,6 +228,36 @@ function CartPage() {
           <span>{notification.message}</span>
         </div>
       )}
+      <style>{`
+        @media (min-width: 768px) {
+          .buyer-cart-grid {
+            grid-template-columns: minmax(0, 1fr) 350px !important;
+          }
+          .cart-item-card {
+            flex-direction: row !important;
+          }
+        }
+        @media (max-width: 767px) {
+          .cart-item-card {
+            flex-direction: column !important;
+            gap: 1rem !important;
+          }
+          .cart-item-media {
+            width: 100% !important;
+            height: 200px !important;
+          }
+          .cart-item-side {
+            text-align: left !important;
+            display: flex !important;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #eee;
+            width: 100%;
+          }
+        }
+      `}</style>
     </div>
   );
 }

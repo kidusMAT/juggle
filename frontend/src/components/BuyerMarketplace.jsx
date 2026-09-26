@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, Link } from 'react-router-dom';
 import api, { API_BASE } from '../api';
 import { ShoppingBag, ShoppingCart, ChevronRight, ChevronLeft, CheckCircle, XCircle, CreditCard, ShieldCheck, Flame, Clock, Activity } from 'lucide-react';
 import Navbar from './Navbar';
@@ -9,12 +9,18 @@ const placeholderColors = [
   '#fce7f3', '#ecfdf5', '#e0f2fe', '#1f2937', '#f3f4f6',
 ];
 
+let DEMO_MARKET_BASE_TIME = Date.now();
+
 const createDemoMarketDeals = () => {
-  const now = Date.now();
+  const elapsed = Date.now() - DEMO_MARKET_BASE_TIME;
+  if (elapsed > 10 * 60 * 1000) {
+    DEMO_MARKET_BASE_TIME = Date.now();
+  }
+  const now = DEMO_MARKET_BASE_TIME;
   const product = (id, name, brand, category, price, color) => ({ id, name, brand, category_name: category, base_price: String(price), image_url: '', demo_color: color, description: `Demo market listing for ${name}.` });
   return [
-    { id: -101, product: product(-101, 'Satin City Runner', 'Nile Studio', 'Sneakers', 6800, '#dff7ed'), markup_price: '7600.00', amount: 3, is_direct: false, juggler_name: 'market demo', expires_at: new Date(now + 72 * 1000).toISOString() },
-    { id: -102, product: product(-102, 'Linen Utility Tote', 'Addis Works', 'Designer Bags', 2400, '#e6f0ff'), markup_price: '2950.00', amount: 7, is_direct: false, juggler_name: 'market demo', expires_at: new Date(now + 98 * 1000).toISOString() },
+    { id: -101, product: product(-101, 'Satin City Runner', 'Nile Studio', 'Sneakers', 6800, '#dff7ed'), markup_price: '7600.00', amount: 3, is_direct: false, juggler_name: 'market demo', expires_at: new Date(now + 180 * 1000).toISOString() },
+    { id: -102, product: product(-102, 'Linen Utility Tote', 'Addis Works', 'Designer Bags', 2400, '#e6f0ff'), markup_price: '2950.00', amount: 7, is_direct: false, juggler_name: 'market demo', expires_at: new Date(now + 240 * 1000).toISOString() },
     { id: -103, product: product(-103, 'Studio Field Watch', 'Meridian Supply', 'Watches', 9200, '#fff1d8'), markup_price: '10800.00', amount: 4, is_direct: false, juggler_name: 'market demo', expires_at: new Date(now + 4 * 60 * 1000).toISOString() },
     { id: -104, product: product(-104, 'Heavyweight Logo Crew', 'North Block', 'Streetwear', 3200, '#f4e8ff'), markup_price: '3900.00', amount: 11, is_direct: false, juggler_name: 'market demo', expires_at: new Date(now + 5 * 60 * 1000).toISOString() },
     { id: -105, product: product(-105, 'Everyday Court Low', 'Common Ground', 'Sneakers', 4100, '#e9f7f7'), markup_price: '4100.00', amount: 14, is_direct: true },
@@ -256,70 +262,35 @@ function BuyerMarketplace() {
   useEffect(() => {
     fetchCategories();
     fetchPhaseTime();
-    const interval = setInterval(() => {
-      // Only auto-refresh if we are on the first page and not searching
-      if (!nextPage || deals.length <= 24) {
-        if (!searchTerm && selectedCategory === 'All' && selectedBrand === 'All') {
-          fetchProducts();
-        }
-      }
-    }, 5000);
-    const phaseInterval = setInterval(fetchPhaseTime, 5000);
-    const phaseTimer = setInterval(() => {
+
+    // Unified 1-second clock: accurate, smooth, and eliminates 100ms re-render glitching
+    const secondClock = setInterval(() => {
+      setNow(Date.now());
       setPhaseTimeLeft(prev => {
         const next = prev > 0 ? prev - 1 : 0;
-        // Trigger exit when timer hit 0 or reset jump detected
         if (prev <= 1 && next === 0) {
-           setReliveTransition('exit');
-           setTimeout(() => {
-             setReliveTransition('enter');
-             setTimeout(() => setReliveTransition('none'), 600);
-           }, 500);
+          setReliveTransition('exit');
+          setTimeout(() => {
+            setReliveTransition('enter');
+            setTimeout(() => setReliveTransition('none'), 600);
+          }, 500);
         }
         return next;
       });
     }, 1000);
 
-    const timer = setInterval(() => {
-      const currentTime = Date.now();
-      setNow(currentTime);
-
-      setDeals(prevDeals => {
-        let itemsToRemove = [];
-        const updated = prevDeals.map(deal => {
-          if (deal.expires_at) {
-            const expiry = new Date(deal.expires_at).getTime();
-            if (expiry <= currentTime) {
-              itemsToRemove.push(deal.id);
-            }
-          }
-          return deal;
-        });
-
-        if (itemsToRemove.length > 0) {
-          setExpiredProductIds(prev => {
-            const next = new Set(prev);
-            itemsToRemove.forEach(id => next.add(id));
-            return next;
-          });
-
-          setTimeout(() => {
-            setDeals(current => current.filter(d => !itemsToRemove.includes(d.id)));
-            setExpiredProductIds(prev => {
-              const next = new Set(prev);
-              itemsToRemove.forEach(id => next.delete(id));
-              return next;
-            });
-          }, 3500);
+    // Refresh products gently every 15s without resetting local countdowns
+    const refreshInterval = setInterval(() => {
+      if (!nextPage || deals.length <= 24) {
+        if (!searchTerm && selectedCategory === 'All' && selectedBrand === 'All') {
+          fetchProducts();
         }
-        return updated;
-      });
-    }, 100); 
+      }
+    }, 15000);
+
     return () => {
-      clearInterval(interval);
-      clearInterval(phaseInterval);
-      clearInterval(phaseTimer);
-      clearInterval(timer);
+      clearInterval(secondClock);
+      clearInterval(refreshInterval);
     };
   }, []);
 
@@ -424,28 +395,44 @@ function BuyerMarketplace() {
 
     rails.forEach(rail => {
       let dragging = false;
+      let hasMoved = false;
       let startX = 0;
       let startScroll = 0;
 
       const onPointerDown = (event) => {
+        if (event.button !== 0) return;
         dragging = true;
+        hasMoved = false;
         startX = event.clientX;
         startScroll = rail.scrollLeft;
-        rail.classList.add('is-dragging');
-        rail.setPointerCapture?.(event.pointerId);
       };
       const onPointerMove = (event) => {
         if (!dragging) return;
-        rail.scrollLeft = startScroll - (event.clientX - startX);
+        const delta = event.clientX - startX;
+        if (!hasMoved && Math.abs(delta) > 6) {
+          hasMoved = true;
+          rail.classList.add('is-dragging');
+          rail.setPointerCapture?.(event.pointerId);
+        }
+        if (hasMoved) {
+          rail.scrollLeft = startScroll - delta;
+        }
       };
-      const stopDragging = () => {
+      const stopDragging = (event) => {
+        if (hasMoved && event?.pointerId && rail.hasPointerCapture?.(event.pointerId)) {
+          rail.releasePointerCapture?.(event.pointerId);
+        }
         dragging = false;
+        hasMoved = false;
         rail.classList.remove('is-dragging');
       };
       const onWheel = (event) => {
-        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
-        event.preventDefault();
-        rail.scrollLeft += event.deltaY;
+        // Only scroll the carousel horizontally when holding Shift key
+        // Never preventDefault on normal vertical scrolls so the page never gets stuck
+        if (event.shiftKey && event.deltaY !== 0) {
+          event.preventDefault();
+          rail.scrollLeft += event.deltaY;
+        }
       };
 
       rail.addEventListener('pointerdown', onPointerDown);
@@ -454,6 +441,8 @@ function BuyerMarketplace() {
       rail.addEventListener('pointercancel', stopDragging);
       rail.addEventListener('pointerleave', stopDragging);
       rail.addEventListener('wheel', onWheel, { passive: false });
+      window.addEventListener('pointerup', stopDragging);
+      window.addEventListener('pointercancel', stopDragging);
       cleanups.push(() => {
         rail.removeEventListener('pointerdown', onPointerDown);
         rail.removeEventListener('pointermove', onPointerMove);
@@ -461,6 +450,8 @@ function BuyerMarketplace() {
         rail.removeEventListener('pointercancel', stopDragging);
         rail.removeEventListener('pointerleave', stopDragging);
         rail.removeEventListener('wheel', onWheel);
+        window.removeEventListener('pointerup', stopDragging);
+        window.removeEventListener('pointercancel', stopDragging);
       });
     });
 
@@ -504,7 +495,7 @@ function BuyerMarketplace() {
   const urgentJuggles = liveJuggles.filter(d => {
       if (d && d.expires_at) {
           const expiry = new Date(d.expires_at).getTime();
-          const productSecondsLeft = Math.max(0, Math.ceil((expiry - now) / 1000));
+          const productSecondsLeft = Math.max(0, Math.floor((expiry - now) / 1000));
           
           return productSecondsLeft < 120 || (productSecondsLeft > 10000 && phaseTimeLeft < 120);
       }
@@ -554,11 +545,19 @@ function BuyerMarketplace() {
     document.getElementById(`direct-group-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  // Determine Hero Deal (Highly urgent OR most expensive)
-  let heroDeal = null;
-  if (urgentJuggles.length > 0 && urgentJuggles[0]?.product) heroDeal = urgentJuggles[0];
-  else if (trendingJuggles.length > 0 && trendingJuggles[0]?.product) heroDeal = trendingJuggles[0];
-  else if (directDeals.length > 0 && directDeals[0]?.product) heroDeal = directDeals[0];
+  // Determine Hero Deal (Highly urgent OR most active, prioritizing active deals)
+  const isDealActive = (deal) => {
+    if (!deal || !deal.product) return false;
+    if (deal.is_direct) return true;
+    if (!deal.expires_at) return true;
+    return (new Date(deal.expires_at).getTime() - now) > 0;
+  };
+
+  let heroDeal = urgentJuggles.find(isDealActive)
+    || trendingJuggles.find(isDealActive)
+    || directDeals.find(isDealActive)
+    || filteredDeals.find(isDealActive)
+    || null;
 
 
   // REUSABLE PRODUCT CARD RENDERER
@@ -572,25 +571,29 @@ function BuyerMarketplace() {
     let productSecondsLeft = 0;
     if (deal.expires_at) {
       const expiry = new Date(deal.expires_at).getTime();
-      productSecondsLeft = Math.max(0, Math.ceil((expiry - now) / 1000));
+      productSecondsLeft = Math.max(0, Math.floor((expiry - now) / 1000));
     } else {
       productSecondsLeft = phaseTimeLeft;
     }
     
     const isDestroying = expiredProductIds.has(deal.id);
-    const displaySeconds = Math.min(productSecondsLeft, phaseTimeLeft, 300);
+    const displaySeconds = deal.expires_at ? productSecondsLeft : phaseTimeLeft;
+    // Keep expired juggle cards in the grid (dimmed) instead of removing them → no layout shift
+    const isEnded = !isDirectSale && productSecondsLeft <= 0 && !isDestroying;
 
     return (
       <div 
         key={deal.id} 
-        className={`product-card-container ${isDestroying ? 'expired' : ''} ${isHorizontal ? 'horizontal-card' : ''} ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : 'staggered-entrance')}`}
+        className={`product-card-container ${isDestroying ? 'expired' : ''} ${isEnded ? 'deal-ended' : ''} ${isHorizontal ? 'horizontal-card' : ''} ${reliveTransition === 'exit' ? 'renew-exit' : (reliveTransition === 'enter' ? 'renew-enter' : 'staggered-entrance')}`}
         style={{ 
           position: 'relative', 
-          cursor: 'pointer', 
+          cursor: isEnded ? 'default' : 'pointer', 
           flex: isHorizontal ? '0 0 300px' : undefined,
+          opacity: isEnded ? 0.5 : 1,
+          transition: 'opacity 0.6s ease',
           animationDelay: `${(idx % 10) * 0.1}s`
         }}
-        onClick={() => openProduct(product)}
+        onClick={() => !isEnded && openProduct(product)}
       >
         {isDestroying && <Sparks />}
         <div className={`card card-alive ${isDestroying ? 'destructing' : ''} ${!isDirectSale && productSecondsLeft < 60 ? 'vibrating' : ( !isDirectSale ? 'juggling' : '')}`} style={{ padding: '0', overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', background: '#fff', position: 'relative' }}>
@@ -604,69 +607,79 @@ function BuyerMarketplace() {
           }}>
             {!isDirectSale ? (
               <div className="badge-timer badge-live" style={{ 
-                position: 'absolute', top: '1rem', left: '1rem', 
-                border: '1px solid rgba(192, 132, 252, 0.4)', 
-                padding: '0.4rem 0.6rem', zIndex: 2, background: 'rgba(0,0,0,0.8)',
-                borderRadius: '0.5rem', backdropFilter: 'blur(4px)'
+                position: 'absolute', top: '0.6rem', left: '0.6rem', 
+                border: '1px solid rgba(255, 255, 255, 0.18)', 
+                padding: '0.25rem 0.55rem', zIndex: 2, background: 'rgba(0,0,0,0.78)',
+                borderRadius: '0.45rem', backdropFilter: 'blur(6px)',
+                display: 'inline-flex', alignItems: 'center', gap: '0.35rem'
               }}>
-                <span style={{ color: '#d8e5de', fontSize: '0.65rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  <span className="live-dot" style={{ background: productSecondsLeft <= 0 ? '#ff0000' : (productSecondsLeft < 60 ? '#ef4444' : '#10b981') }}></span> 
-                  {productSecondsLeft <= 0 ? 'EXPIRED' : (productSecondsLeft < 60 ? 'ENDING SOON' : 'LIVE JUGGLE')}
-                </span>
+                <span className="live-dot" style={{ width: '6px', height: '6px', borderRadius: '50%', display: 'inline-block', background: productSecondsLeft <= 0 ? '#888' : (productSecondsLeft < 60 ? '#ef4444' : '#10b981') }}></span> 
                 <span className="timer-neon" style={{ 
-                  color: productSecondsLeft <= 0 ? '#b42318' : (productSecondsLeft < 60 ? '#f87171' : '#c084fc'), 
-                  fontWeight: '900', fontSize: '1.1rem', marginLeft: '0.5rem',
+                  color: productSecondsLeft <= 0 ? '#888' : (productSecondsLeft < 60 ? '#f87171' : '#c084fc'), 
+                  fontWeight: '800', fontSize: '0.85rem',
                   fontVariantNumeric: 'tabular-nums'
                 }}>{formatTime(displaySeconds)}</span>
               </div>
             ) : (
               <div style={{ 
-                position: 'absolute', top: '1rem', left: '1rem', 
+                position: 'absolute', top: '0.6rem', left: '0.6rem', 
                 border: '1px solid rgba(0, 0, 0, 0.1)', 
-                padding: '0.3rem 0.6rem', zIndex: 2, background: 'rgba(255,255,255,0.9)',
-                borderRadius: '0.5rem', backdropFilter: 'blur(4px)'
+                padding: '0.25rem 0.55rem', zIndex: 2, background: 'rgba(255,255,255,0.92)',
+                borderRadius: '0.45rem', backdropFilter: 'blur(4px)'
               }}>
-                <span style={{ color: '#333', fontSize: '0.6rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+                <span style={{ color: '#333', fontSize: '0.6rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
                   Standard
                 </span>
-              </div>
-            )}
-            {isDemoListing && (
-              <div className="demo-listing-badge">Demo preview</div>
-            )}
-            
-            {!isDirectSale && (
-              <div style={{ position: 'absolute', bottom: '1rem', right: '1rem', background: 'rgba(0,0,0,0.8)', color: 'white', padding: '4px 10px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                {deal.amount} SLOTS LEFT
               </div>
             )}
           </div>
 
           <div 
-            className={!isDirectSale ? 'new-deal-entry' : ''}
+            className={`card-body-content ${!isDirectSale ? 'new-deal-entry' : ''}`}
             style={{ padding: '1.25rem', flex: 1, display: 'flex', flexDirection: 'column' }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.25rem' }}>
               <h3 style={{ fontSize: '1.05rem', margin: 0, fontWeight: '800', color: '#111', lineHeight: '1.2' }}>{product.name}</h3>
             </div>
-            <p className="text-muted" style={{ fontSize: '0.75rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
-              {product.brand}
-            </p>
+            
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <p className="text-muted" style={{ margin: 0, fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: '700' }}>
+                {product.brand}
+              </p>
+              {!isDirectSale && deal.amount !== undefined && (
+                <span className="card-slots-text" style={{ fontSize: '0.7rem', fontWeight: '700', color: deal.amount <= 3 ? '#ef4444' : '#6b7280' }}>
+                  {deal.amount} {deal.amount === 1 ? 'slot' : 'slots'} left
+                </span>
+              )}
+            </div>
 
-            <div style={{ marginTop: 'auto', paddingTop: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
-                <span style={{ fontSize: '1.4rem', fontWeight: '900', color: '#000' }}>
+            <div className="card-price-section" style={{ marginTop: 'auto', paddingTop: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                <span className="card-price-text" style={{ fontSize: '1.4rem', fontWeight: '900', color: '#000' }}>
                   ETB {deal.markup_price}
                 </span>
                 {isDirectSale && (
-                  <span style={{ fontSize: '0.7rem', color: '#888', marginLeft: 'auto' }}>
-                    Current offer
+                  <span className="card-offer-label" style={{ fontSize: '0.7rem', color: '#888' }}>
+                    Standard
                   </span>
                 )}
+                {/* Mobile Quick-Cart Button (visible only on mobile, tucked in price row) */}
+                <button
+                  className="card-quick-cart-mobile"
+                  aria-label={`Add ${product.name} to cart`}
+                  disabled={cartAddingId === deal.id || isDemoListing}
+                  title={isDemoListing ? 'Demo preview' : 'Add to cart'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleAddToCart(deal);
+                  }}
+                >
+                  <ShoppingCart size={14} />
+                </button>
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
+            <div className="card-action-row" style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem' }}>
               <button
                 className="market-cart-button"
                 aria-label={`Add ${product.name} to cart`}
@@ -691,7 +704,8 @@ function BuyerMarketplace() {
                   setCheckoutModalOpen(true);
                 }}
                 >
-                  {isDemoListing ? 'DEMO PREVIEW' : 'BUY NOW'}
+                  <span className="btn-buy-full-text">{isDemoListing ? 'DEMO PREVIEW' : 'BUY NOW'}</span>
+                  <span className="btn-buy-short-text">{isDemoListing ? 'DEMO' : 'BUY'}</span>
               </button>
             </div>
           </div>
@@ -740,7 +754,7 @@ function BuyerMarketplace() {
       </div>
 
       {/* QUICK CATEGORIES BAR */}
-      <div style={{ background: '#fff', borderBottom: '1px solid #eaeaea', padding: '1rem 2rem', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+      <div className="quick-categories-bar" style={{ background: '#fff', borderBottom: '1px solid #eaeaea', padding: '1rem 2rem', overflowX: 'auto', whiteSpace: 'nowrap' }}>
         <div style={{ display: 'flex', gap: '1rem' }}>
           {categoryNames.map(cat => (
             <button 
@@ -777,12 +791,12 @@ function BuyerMarketplace() {
         <span className="market-activity-sync">Auto-updating feed</span>
       </div>
 
-      <div className="container" style={{ padding: '2rem' }}>
+      <div className="container market-main-container">
         
         {/* HERO SECTION */}
         {heroDeal && !searchTerm && selectedCategory === 'All' && (
-          <div style={{ marginBottom: '4rem' }}>
-            <div style={{ 
+          <div className="hero-deal-section" style={{ marginBottom: '4rem' }}>
+            <div className="hero-deal-card" style={{ 
               background: '#000', 
               color: '#fff', 
               borderRadius: '2rem', 
@@ -795,7 +809,7 @@ function BuyerMarketplace() {
               border: '1px solid rgba(255,255,255,0.1)'
             }} onClick={() => openProduct(heroDeal.product)}>
               {/* ALIVE EFFECTS */}
-              <div style={{ flex: 1, padding: '4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', zIndex: 2 }}>
+              <div className="hero-deal-content" style={{ flex: 1, padding: '4rem', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative', zIndex: 2 }}>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
                   <span className="glass-morphism" style={{ color: '#fff', padding: '0.4rem 1rem', borderRadius: '2rem', fontWeight: '900', fontSize: '0.7rem', textTransform: 'uppercase' }}>
                     {heroDeal.is_direct ? 'Featured supply' : 'Live Juggle'}
@@ -807,21 +821,21 @@ function BuyerMarketplace() {
                   )}
                 </div>
                 
-                <h1 style={{ fontSize: '4.5rem', fontWeight: '900', lineHeight: '1', marginBottom: '1.5rem', letterSpacing: '-0.03em' }}>{heroDeal.product.name}</h1>
-                <p style={{ fontSize: '1.4rem', color: '#aaa', marginBottom: '2.5rem', fontWeight: '600' }}>{heroDeal.product.brand}</p>
+                <h1 className="hero-deal-title" style={{ fontSize: '4.5rem', fontWeight: '900', lineHeight: '1', marginBottom: '1.5rem', letterSpacing: '-0.03em' }}>{heroDeal.product.name}</h1>
+                <p className="hero-deal-brand" style={{ fontSize: '1.4rem', color: '#aaa', marginBottom: '2.5rem', fontWeight: '600' }}>{heroDeal.product.brand}</p>
                 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '3rem', marginTop: 'auto' }}>
+                <div className="hero-deal-meta" style={{ display: 'flex', alignItems: 'center', gap: '3rem', marginTop: 'auto', flexWrap: 'wrap' }}>
                   <div>
                     <p style={{ fontSize: '0.85rem', color: '#888', margin: '0 0 0.5rem 0', textTransform: 'uppercase', fontWeight: '900', letterSpacing: '0.1em' }}>Current Value</p>
-                    <p style={{ fontSize: '2.5rem', fontWeight: '900', margin: 0, color: 'var(--neon-green)' }}>ETB {heroDeal.markup_price}</p>
+                    <p className="hero-deal-price" style={{ fontSize: '2.5rem', fontWeight: '900', margin: 0, color: 'var(--neon-green)' }}>ETB {heroDeal.markup_price}</p>
                   </div>
                   {!heroDeal.is_direct && heroDeal.expires_at && (
-                    <div className="glass-morphism" style={{ padding: '1.25rem 2rem', borderRadius: '1.5rem', border: '1px solid rgba(255,255,255,0.2)' }}>
+                    <div className="hero-deal-timer-box glass-morphism" style={{ padding: '1.25rem 2rem', borderRadius: '1.5rem', border: '1px solid rgba(255,255,255,0.2)' }}>
                       <p style={{ fontSize: '0.85rem', color: '#ff4444', margin: '0 0 0.5rem 0', textTransform: 'uppercase', fontWeight: '900', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Clock size={18} className="timer-neon" /> Ends in
                       </p>
                       <p style={{ fontSize: '2rem', fontWeight: '900', margin: 0, color: '#ff4444', fontVariantNumeric: 'tabular-nums' }}>
-                        {formatTime(Math.max(0, Math.ceil((new Date(heroDeal.expires_at).getTime() - now) / 1000)))}
+                        {formatTime(Math.max(0, Math.floor((new Date(heroDeal.expires_at).getTime() - now) / 1000)))}
                       </p>
                     </div>
                   )}
@@ -853,8 +867,8 @@ function BuyerMarketplace() {
         )}
 
         {/* URGENT JUGGLES (EXPIRING SOON) */}
-        <div style={{ marginBottom: '6rem', position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+        <div className="market-shelf-section" style={{ position: 'relative' }}>
+          <div className="market-shelf-header" style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
             <div style={{ background: '#ef4444', padding: '0.75rem', borderRadius: '1rem', boxShadow: '0 0 20px rgba(239, 68, 68, 0.3)' }}>
               <Flame color="#fff" size={24} />
             </div>
@@ -875,8 +889,8 @@ function BuyerMarketplace() {
         </div>
 
         {/* TRENDING JUGGLES */}
-        <div style={{ marginBottom: '6rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
+        <div className="market-shelf-section">
+          <div className="market-shelf-header" style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
             <div style={{ background: '#000', padding: '0.75rem', borderRadius: '1rem' }}>
               <Clock color="#fff" size={24} />
             </div>
@@ -898,7 +912,7 @@ function BuyerMarketplace() {
 
         {/* FEATURED BRANDS SECTION */}
         {directDeals.length > 0 && !searchTerm && (
-        <div style={{ 
+        <div className="featured-brands-banner" style={{ 
           marginBottom: '6rem', 
           background: 'linear-gradient(135deg, rgba(96, 165, 250, 0.1), rgba(52, 211, 153, 0.1))', 
           padding: '3rem', 
@@ -907,14 +921,37 @@ function BuyerMarketplace() {
           position: 'relative',
           overflow: 'hidden'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2.5rem', position: 'relative', zIndex: 2 }}>
-            <div style={{ background: '#000', padding: '0.75rem', borderRadius: '1rem', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }}>
-              <ShoppingBag color="#fff" size={24} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginBottom: '2.5rem', position: 'relative', zIndex: 2, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ background: '#000', padding: '0.75rem', borderRadius: '1rem', boxShadow: '0 0 20px rgba(0,0,0,0.2)' }}>
+                <ShoppingBag color="#fff" size={24} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '2.2rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '-0.02em' }}>Browse by brand</h2>
+                <p style={{ margin: 0, fontSize: '0.9rem', color: '#666', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Explore curated collections by brand</p>
+              </div>
             </div>
-            <div>
-              <h2 style={{ margin: 0, fontSize: '2.2rem', fontWeight: '900', textTransform: 'uppercase', letterSpacing: '-0.02em' }}>Browse by brand</h2>
-              <p style={{ margin: 0, fontSize: '0.9rem', color: '#666', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Explore curated collections by brand</p>
-            </div>
+            <Link
+              to="/brands"
+              style={{
+                color: '#000',
+                fontWeight: '800',
+                fontSize: '0.9rem',
+                textDecoration: 'none',
+                background: '#fff',
+                padding: '0.65rem 1.25rem',
+                borderRadius: '0.85rem',
+                border: '1px solid rgba(0,0,0,0.1)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
+                transition: 'all 0.2s'
+              }}
+            >
+              <span>View All Brands</span>
+              <ChevronRight size={16} />
+            </Link>
           </div>
           <div className="horizontal-scroller" style={{ position: 'relative', zIndex: 2 }}>
             {/* Group by brand and show one representative product per brand */}
@@ -925,7 +962,7 @@ function BuyerMarketplace() {
                   key={brand}
                   className="product-card-container horizontal-card"
                   style={{ flex: '0 0 300px', cursor: 'pointer' }}
-                  onClick={() => navigate(`/brand/${brand.toLowerCase()}`)}
+                  onClick={() => navigate(`/brand/${encodeURIComponent(brand.toLowerCase())}`)}
                 >
                   <div className="card card-alive" style={{ padding: '0', overflow: 'hidden', height: '100%', background: '#fff' }}>
                     <div style={{ 
@@ -943,7 +980,16 @@ function BuyerMarketplace() {
                     <div style={{ padding: '1.25rem', textAlign: 'center' }}>
                       <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '800', color: '#888', textTransform: 'uppercase' }}>Shop All</p>
                       <h3 style={{ margin: '0.25rem 0', fontSize: '1.2rem', fontWeight: '900' }}>{brand}</h3>
-                      <button className="btn-checkout" style={{ padding: '0.5rem', marginTop: '1rem', fontSize: '0.8rem' }}>VIEW COLLECTION</button>
+                      <button 
+                        className="btn-checkout" 
+                        style={{ padding: '0.5rem', marginTop: '1rem', fontSize: '0.8rem' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/brand/${encodeURIComponent(brand.toLowerCase())}`);
+                        }}
+                      >
+                        VIEW COLLECTION
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -954,7 +1000,7 @@ function BuyerMarketplace() {
         )}
 
         {/* MIXED MARKET FEED (DIRECT SUPPLY + JUGGLES) */}
-        <div className="direct-supply-area" style={{ marginBottom: '4rem' }}>
+        <div className="direct-supply-area market-shelf-section" style={{ marginBottom: '4rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
             <h2 style={{ margin: 0, fontSize: '1.8rem', fontWeight: '900', textTransform: 'uppercase' }}>Direct supply + live Juggles</h2>
           </div>
@@ -970,10 +1016,12 @@ function BuyerMarketplace() {
                     </div>
                   )}
                   <section className="direct-feed-section">
-                    <div className="direct-feed-heading">
-                      <div><span>{sectionIndex === 0 ? 'Market feed' : 'More from the market'}</span><h3>{section.title}</h3></div>
-                      <span>{section.items.length} {section.items.length === 1 ? 'offer' : 'offers'}</span>
-                    </div>
+                    {sectionIndex === 0 && (
+                      <div className="direct-feed-heading">
+                        <div><span>Market feed</span><h3>{section.title}</h3></div>
+                        <span>{section.items.length} {section.items.length === 1 ? 'offer' : 'offers'}</span>
+                      </div>
+                    )}
                     <div className="grid-products">
                       {section.items.map((deal, idx) => renderProductCard(deal, idx + sectionIndex, false))}
                     </div>
@@ -1008,12 +1056,12 @@ function BuyerMarketplace() {
 
       {/* CHECKOUT MODAL (TEST MODE) WITH QUANTITY */}
       {checkoutModalOpen && selectedOffer && (
-        <div style={{
+        <div className="checkout-modal-overlay" style={{
           position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.8)', zIndex: 9999,
           display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          <div className="card" style={{ width: '450px', background: '#fff', color: '#000', padding: '2rem', position: 'relative' }}>
+          <div className="card checkout-modal-sheet" style={{ width: '450px', background: '#fff', color: '#000', padding: '2rem', position: 'relative' }}>
             <button 
               onClick={() => !processingPayment && setCheckoutModalOpen(false)}
               style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: '#000', cursor: 'pointer', fontSize: '1.5rem' }}
@@ -1110,7 +1158,7 @@ function BuyerMarketplace() {
         overflow-x: auto;
         gap: 1.5rem;
         padding-bottom: 1rem;
-        scroll-snap-type: x mandatory;
+        scroll-snap-type: x proximity;
       }
       
       .horizontal-scroller::-webkit-scrollbar {
